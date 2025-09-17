@@ -1,0 +1,746 @@
+import httpx
+import logging
+from bs4 import BeautifulSoup
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+BASE_URI = "https://www.moneycontrol.com/news"
+
+def extract_mc_article_content(url: str) -> str:
+    """Fetches and extracts full blog post content from Moneycontrol article page"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        resp = httpx.get(url, timeout=20, headers=headers)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Try different containers for article content
+        article_div = soup.find("div", class_="article_page")
+        if not article_div:
+            article_div = soup.find("div", id="contentdata")
+
+        if article_div:
+            paragraphs = [p.get_text(strip=True) for p in article_div.find_all("p")]
+            return "\n\n".join(paragraphs)
+
+        return ""
+    except Exception as e:
+        logging.error(f"Error extracting content from {url}: {e}")
+        return ""
+
+
+def extract_mc_posts_from_page(html: str, category: str):
+    """Extracts posts (title, url, summary, content) from listing page"""
+    soup = BeautifulSoup(html, "html.parser")
+    posts = []
+
+    for article in soup.select("li.clearfix"):
+        title_tag = article.find("h2")
+        link_tag = article.find("a")
+
+        if not title_tag or not link_tag:
+            continue
+
+        url = link_tag["href"]
+        title = title_tag.get_text(strip=True)
+
+        # Fetch full article
+        content = extract_mc_article_content(url)
+
+        posts.append({
+            "title": title,
+            "url": url,
+            "category": category,
+            "content": content
+        })
+
+    return posts
+
+
+def crawl_mc_category(category: str, max_pages: int = 3):
+    """Crawl all pages of a moneycontrol category until no more articles"""
+    logging.info(f"Crawling moneycontrol category: {category}")
+
+    # Start from page 1
+    for page in range(1, max_pages + 1):
+        url = f"{BASE_URI}/{category}/page-{page}/" if page > 1 else f"{BASE_URI}/{category}/"
+        logging.info(f"Fetching: {url}")
+        # last_url = load_state(category)
+        logging.info(f"Last crawled URL for {category}")
+
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            resp = httpx.get(url, timeout=20, headers=headers)
+            if resp.status_code != 200:
+                logging.warning(f"Page {page} returned {resp.status_code}, stopping.")
+                break
+
+            posts = extract_mc_posts_from_page(resp.text, category)
+            if not posts:
+                logging.info(f"No posts found on page {page}, stopping.")
+                break
+
+            for post in posts:
+                try:
+                    # supabase.table("moneycontrol_posts").insert(post).execute()
+                    save_to_drive([post])  # save new post(s) to CSV in Drive
+                    logging.info(f"Saved post to Drive: {post['title']}")
+                    # save_state(category, post["url"])
+                except Exception as e:
+                    logging.error(f"Error storing post {post['url']}: {e}")
+
+            # page += 1  # move to next page
+
+        except Exception as e:
+            logging.error(f"Error fetching page {page} for {category}: {e}")
+            break
+
+def run_moneycontrol_crawler():
+    logging.info("🚀 Starting FinancialExpress crawler with full article content")
+
+categories = [
+    "business",
+    "economy",
+    "markets",
+    "trends",
+]
+for cat in categories:
+        crawl_mc_category(cat)
+
+
+
+# financial express crawler start here
+
+BASE_URL2 = "https://www.financialexpress.com"
+
+def extract_fe_article_content(url: str) -> tuple[str, str]:
+    """Fetch full article content + published date"""
+    try:
+        resp = httpx.get(url, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Main content container
+        article_div = soup.find("div", class_="article-section") \
+                      or soup.find("div", class_="post-content") \
+                      or soup.find("div", class_="entry-content")
+
+        content = ""
+        if article_div:
+            paragraphs = [p.get_text(strip=True) for p in article_div.find_all("p")]
+            content = "\n\n".join(paragraphs)
+
+        # Published date
+        date_tag = soup.find("time")
+        published_at = date_tag.get_text(strip=True) if date_tag else None
+
+        return content, published_at
+    except Exception as e:
+        logging.error(f"Error extracting content from {url}: {e}")
+        return "", None
+
+
+def extract_fe_posts_from_page(html: str, category: str):
+    """Extract posts from listing page"""
+    soup = BeautifulSoup(html, "html.parser")
+    posts = []
+
+    # ✅ Target h2.entry-title specifically
+    for h2 in soup.find_all("h2", class_="entry-title"):
+        link_tag = h2.find("a")
+        if not link_tag:
+            continue
+
+        url = link_tag["href"]
+        if not url.startswith("http"):
+            url = BASE_URL2 + url
+
+        title = link_tag.get_text(strip=True)
+
+        # Fetch full content
+        content = extract_fe_article_content(url)
+        if not content:
+            continue
+
+        posts.append({
+            "title": title,
+            "url": url,
+            "category": category,
+            "content": content,
+        })
+
+    return posts
+
+def crawl_fe_category(category_path: str, category_name: str, max_pages: int = 3):
+    """Crawl all pages of a Financial Express category until no more articles"""
+    logging.info(f"Crawling Financial Express category: {category_name}")
+
+    page = 2
+    # while True:
+    for page in range(2, max_pages + 1):
+        url = f"{BASE_URL2}/{category_path}/page/{page}/"
+        logging.info(f"Fetching: {url}")
+
+        try:
+            resp = httpx.get(url, timeout=20)
+            if resp.status_code != 200:
+                logging.warning(f"Page {page} returned {resp.status_code}, stopping.")
+                break
+
+            posts = extract_fe_posts_from_page(resp.text, category_name)
+            if not posts:
+                logging.info(f"No posts found on page {page}, stopping.")
+                break
+
+            for post in posts:
+                try:
+                    save_to_drive([post])  # save new post(s) to CSV in Drive
+                    logging.info(f"Saved post to Drive: {post['title']}")
+                except Exception as e:
+                    logging.error(f"Error storing post {post['url']}: {e}")
+
+            page += 1  # move to next page
+
+        except Exception as e:
+            logging.error(f"Error fetching page {page} for {category_name}: {e}")
+            break
+
+def run_financialexpress_crawler():
+    logging.info("🚀 Starting FinancialExpress crawler with full article content")
+
+categories = [
+    "business",
+    "market",
+    "industry",
+    "economy",
+    "personal-finance",
+    "opinion",
+    "investing",
+    "mutual-funds",
+    "money",
+    "auto",
+    "technology",
+    "sports",
+    "entertainment"
+]
+for cat in categories:
+        crawl_fe_category(cat, cat)
+
+# financial express crawler end here
+
+
+# livemint crawler start here
+import time
+import random
+
+LM_BASE_URL = "https://www.livemint.com"
+# Rotate multiple UA strings
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+]
+
+client = httpx.Client(
+    headers={"User-Agent": random.choice(USER_AGENTS)},
+    follow_redirects=True,
+    timeout=30.0
+)
+def fetch_url(url: str) -> str:
+    """Fetch URL with session + retry + delay"""
+    try:
+        time.sleep(random.uniform(1.5, 3.5))  # polite crawling
+        client.headers["User-Agent"] = random.choice(USER_AGENTS)
+        resp = client.get(url)
+        resp.raise_for_status()
+        return resp.text
+    except Exception as e:
+        logging.error(f"Error fetching {url}: {e}")
+        return ""
+
+def extract_article_content(url: str) -> tuple[str, str]:
+    """Extract full article content + published date from LiveMint"""
+    html = fetch_url(url)
+    if not html:
+        return "", None
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Main content container
+    article_div = soup.find("div", class_="story-content") \
+                  or soup.find("div", class_="contentSec") \
+                  or soup.find("div", {"id": "mainContent"})
+
+    content = ""
+    if article_div:
+        paragraphs = [p.get_text(strip=True) for p in article_div.find_all("p")]
+        content = "\n\n".join(paragraphs)
+
+
+    return content
+
+
+def extract_posts_from_page(html: str, category: str):
+    """Extract posts from LiveMint Market listing page"""
+    soup = BeautifulSoup(html, "html.parser")
+    posts = []
+
+    for article in soup.find_all("div", class_="headlineSec"):
+        link_tag = article.find("a")
+        if not link_tag:
+            continue
+
+        url = link_tag["href"]
+        if not url.startswith("http"):
+            url = LM_BASE_URL + url
+
+        title = link_tag.get_text(strip=True)
+
+        # Fetch full content
+        content = extract_article_content(url)
+        if not content:
+            continue
+
+        posts.append({
+            "title": title,
+            "url": url,
+            "category": category,
+            "content": content,
+        })
+
+    return posts
+
+
+def crawl_category(category_url: str, category_name: str, max_pages: int = 3):
+    """Crawl LiveMint Market news"""
+    logging.info(f"Crawling LiveMint category: {category_name}")
+
+    for page in range(2, max_pages + 1):
+        url = f"{category_url}/page-{page}" if page > 1 else category_url
+        logging.info(f"Fetching: {url}")
+
+        html = fetch_url(url)
+        if not html:
+            logging.warning(f"Skipping page {page}, empty response")
+            break
+
+        posts = extract_posts_from_page(html, category_name)
+        if not posts:
+            logging.info(f"No posts found on page {page}, stopping.")
+            break
+
+        for post in posts:
+            try:
+                save_to_drive([post])  # save new post(s) to CSV in Drive
+                logging.info(f"Saved post to Drive: {post['title']}")
+            except Exception as e:
+                logging.error(f"Error storing post {post['url']}: {e}")
+
+
+def run_mintlive():
+    crawl_category(
+        "https://www.livemint.com/latest-news",
+        "News",
+        max_pages=3
+    )
+
+# livemint crawler end here
+
+
+# cnbc crawler start here
+from datetime import datetime, timedelta
+import xml.etree.ElementTree as ET
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+]
+
+client = httpx.Client(
+    headers={"User-Agent": random.choice(USER_AGENTS)},
+    follow_redirects=True,
+    timeout=30.0
+)
+
+
+def fetch_cnbc_url(url: str) -> str:
+    try:
+        time.sleep(random.uniform(1.5, 3.5))
+        client.headers["User-Agent"] = random.choice(USER_AGENTS)
+        resp = client.get(url)
+        resp.raise_for_status()
+        return resp.text
+    except Exception as e:
+        logging.error(f"Error fetching {url}: {e}")
+        return ""
+
+
+def extract_cnbc_urls_from_sitemap(sitemap_url: str) -> list[str]:
+    """Extract all article URLs from CNBC sitemap XML"""
+    try:
+        logging.info(f"Fetching sitemap: {sitemap_url}")
+        xml_content = fetch_url(sitemap_url)
+        if not xml_content:
+            return []
+        
+        # Parse XML
+        root = ET.fromstring(xml_content)
+        
+        # Find all <loc> elements (URLs)
+        urls = []
+        for loc in root.findall(".//{http://www.sitemaps.org/schemas/sitemap/0.9}loc"):
+            url = loc.text
+            if url and "cnbctv18.com" in url:
+                urls.append(url)
+        
+        logging.info(f"Extracted {len(urls)} URLs from sitemap")
+        return urls
+        
+    except Exception as e:
+        logging.error(f"Error parsing sitemap {sitemap_url}: {e}")
+        return []
+
+
+def extract_cnbc_article_content(url: str) -> tuple[str, str]:
+    """Fetch article content + published date"""
+    html = fetch_cnbc_url(url)
+    if not html:
+        return "", None
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Try different content containers for CNBC
+    article_div = (soup.find("div", class_="article_content") or
+                  soup.find("div", class_="content-area") or
+                  soup.find("div", class_="article-body") or
+                  soup.find("div", class_="story-content") or
+                  soup.find("article"))
+
+    content = ""
+    if article_div:
+        # Remove unwanted elements
+        for unwanted in article_div.find_all(["script", "style", "nav", "aside", "footer"]):
+            unwanted.decompose()
+        
+        paragraphs = [p.get_text(strip=True) for p in article_div.find_all(class_="articleWrap")]
+        content = "\n\n".join([p for p in paragraphs if p])  # Filter empty paragraphs
+
+    # Try different date selectors for CNBC
+    date_tag = (soup.find("span", class_="pub_date") or
+               soup.find("time") or
+               soup.find("div", class_="article-date") or
+               soup.find("span", class_="date"))
+    
+    published_at = date_tag.get_text(strip=True) if date_tag else None
+
+    return content, published_at
+
+
+def process_cnbc_article_from_url(url: str, category: str) -> dict:
+    """Process a single article URL and extract content"""
+    try:
+        # Fetch full article content
+        content, published_at = extract_cnbc_article_content(url)
+        if not content:
+            return None
+
+        # Try to extract title from the HTML content
+        html = fetch_cnbc_url(url)
+        title = ""
+        if html:
+            soup = BeautifulSoup(html, "html.parser")
+            title_tag = soup.find("title") or soup.find("h1")
+            if title_tag:
+                title = title_tag.get_text(strip=True)
+        
+        # Fallback to URL-based title if no title found
+        if not title:
+            title = url.split("/")[-1].replace("-", " ").replace(".htm", "").title()
+        
+        return {
+            "title": title,
+            "url": url,
+            "category": category,
+            "content": content
+        }
+    except Exception as e:
+        logging.error(f"Error processing article {url}: {e}")
+        return None
+
+
+def crawl_cnbc_sitemap(start_date: str, category_name: str, max_days: int = 5):
+    """Crawl CNBC TV18 using sitemap URLs with date-based pagination"""
+    logging.info(f"Crawling CNBC TV18 using sitemaps for category: {category_name}")
+    
+    # Parse start date
+    try:
+        current_date = datetime.strptime(start_date, "%Y-%m-%d")
+    except ValueError:
+        logging.error(f"Invalid date format. Use YYYY-MM-DD format. Got: {start_date}")
+        return
+    
+    seen_urls = set()  # Track URLs to detect duplicates
+    total_processed = 0
+    
+    for day in range(max_days):
+        # Format date for sitemap URL
+        date_str = current_date.strftime("%Y-%m-%d")
+        sitemap_url = f"https://www.cnbctv18.com/commonfeeds/v1/cne/sitemap/daily/{date_str}.xml"
+        
+        logging.info(f"Processing sitemap for date: {date_str}")
+        
+        # Extract URLs from sitemap
+        article_urls = extract_cnbc_urls_from_sitemap(sitemap_url)
+        
+        if not article_urls:
+            logging.info(f"No URLs found in sitemap for {date_str}")
+            current_date += timedelta(days=1)
+            continue
+        
+        # Process each article URL
+        new_articles = 0
+        for url in article_urls:
+            if url in seen_urls:
+                continue
+                
+            seen_urls.add(url)
+            
+            # Process the article
+            article_data = process_cnbc_article_from_url(url, category_name)
+            if not article_data:
+                continue
+            
+            try:
+                # Use upsert to handle duplicates gracefully
+                save_to_drive([article_data])  # save new post(s) to CSV in Drive
+                logging.info(f"Saved post to Drive: {article_data['title']}")
+                new_articles += 1
+                total_processed += 1
+            except Exception as e:
+                logging.error(f"Error storing post {url}: {e}")
+        
+        logging.info(f"Processed {new_articles} new articles from {date_str}")
+        
+        # Move to next day
+        current_date += timedelta(days=1)
+        
+        # Add delay between days to be respectful
+        if day < max_days - 1:
+            time.sleep(random.uniform(3, 5))
+    
+    logging.info(f"Total articles processed: {total_processed}")
+
+def run_cnbc():
+    # Use recent date for sitemap crawling
+    # You can adjust the start date as needed
+    start_date = "2025-09-10"  # Start from a recent date
+    crawl_cnbc_sitemap(start_date, "Market News", max_days=3)
+
+# cnbc crawler end here
+
+# business standard crawler start here
+BS_BASE_URL = "https://www.business-standard.com"
+
+def extract_bs_article_content(url: str) -> tuple[str, str]:
+    """Fetch full article content + published date from Business Standard"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        resp = httpx.get(url, timeout=20, headers=headers)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Article content container
+        article_div = soup.find("div", class_="article-content") \
+                      or soup.find("div", class_="story-content") \
+                      or soup.find("div", class_="content")
+
+        content = ""
+        if article_div:
+            paragraphs = [p.get_text(strip=True) for p in article_div.find_all("p")]
+            content = "\n\n".join(paragraphs)
+
+        # Published date
+        date_tag = soup.find("span", class_="dateline") \
+                   or soup.find("time")
+        published_at = date_tag.get_text(strip=True) if date_tag else None
+
+        return content, published_at
+    except Exception as e:
+        logging.error(f"Error extracting content from {url}: {e}")
+        return "", None
+
+
+def extract_bs_posts_from_page(html: str, category: str):
+    """Extract posts from Business Standard stock market listing page"""
+    soup = BeautifulSoup(html, "html.parser")
+    posts = []
+
+    # ✅ Article cards on listing page
+    for article in soup.find_all("div", class_="listing-txt"):
+        link_tag = article.find("a")
+        if not link_tag:
+            continue
+
+        url = link_tag["href"]
+        if not url.startswith("http"):
+            url = BS_BASE_URL + url
+
+        title = link_tag.get_text(strip=True)
+
+        # Fetch full content
+        content = extract_bs_article_content(url)
+        if not content:
+            continue
+
+        posts.append({
+            "title": title,
+            "url": url,
+            "category": category,
+            "content": content
+        })
+
+    return posts
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/"
+}
+
+def crawl_bs_category(category_url: str, category_name: str, max_pages: int = 3):
+    """Crawl Business Standard stock market news category"""
+    logging.info(f"Crawling Business Standard category: {category_name}")
+
+    # Start from page 1 instead of page 2
+    for page in range(1, max_pages + 1):
+        url = f"{category_url}/page-{page}" if page > 1 else category_url
+        logging.info(f"Fetching: {url}")
+
+        try:
+            resp = httpx.get(url, timeout=30, headers=HEADERS, follow_redirects=True)
+            logging.info(f"Response status: {resp.status_code}")
+            if resp.status_code != 200:
+                logging.warning(f"Page {page} returned {resp.status_code}, stopping.")
+                break
+
+            posts = extract_bs_posts_from_page(resp.text, category_name)
+            if not posts:
+                logging.info(f"No posts found on page {page}, stopping.")
+                break
+
+            for post in posts:
+                try:
+                    save_to_drive([post])  # save new post(s) to CSV in Drive
+                    logging.info(f"Stored post: {post['title']}")
+                except Exception as e:
+                    logging.error(f"Error storing post {post['url']}: {e}")
+            
+            # Add delay between requests to be more respectful
+            if page < max_pages:
+                logging.info("Waiting 2 seconds before next request...")
+                time.sleep(2)
+
+        except Exception as e:
+            logging.error(f"Error fetching page {page} for {category_name}: {e}")
+            break
+def run_business_std():
+    crawl_bs_category(
+            "https://www.business-standard.com/markets/stock-market-news",
+            "Stock Market News",
+            max_pages=3
+        )
+# Business standard crawler end here
+
+#  gogole storage start here
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import pickle
+import os
+import pandas as pd
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+
+def get_drive_service():
+    creds = None
+    if os.path.exists("token.pkl"):
+        with open("token.pkl", "rb") as token:
+            creds = pickle.load(token)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        with open("token.pkl", "wb") as token:
+            pickle.dump(creds, token)
+
+    return build("drive", "v3", credentials=creds)
+
+all_posts = []  # global storage for posts
+
+def save_to_drive(posts, filename="finscrap_posts.csv"):
+    # Append new posts
+    global all_posts
+    all_posts.extend(posts)
+
+    # Convert to DataFrame
+    df = pd.DataFrame(all_posts)
+
+    # Save locally
+    df.to_csv(filename, index=False)
+
+    # Upload to Google Drive
+    service = get_drive_service()
+    file_metadata = {"name": filename, "mimeType": "application/vnd.google-apps.spreadsheet"}
+    media = MediaFileUpload(filename, mimetype="text/csv", resumable=True)
+
+    # Check if file already exists (optional: update instead of create new)
+    results = service.files().list(q=f"name='{filename}'", fields="files(id)").execute()
+    items = results.get("files", [])
+
+    if items:
+        file_id = items[0]["id"]
+        service.files().update(fileId=file_id, media_body=media).execute()
+        print(f"✅ Updated existing file in Drive: {filename}")
+    else:
+        service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        print(f"✅ Uploaded new file to Drive: {filename}")
+# google storage end here
+
+if __name__ == "__main__":
+    logging.info("🚀 Starting Moneycontrol crawler with full article content")
+    run_moneycontrol_crawler()
+    logging.info("🚀 Starting FinancialExpress crawler with full article content")
+    run_financialexpress_crawler()
+    run_mintlive()
+    run_cnbc()
+    logging.info("🚀 Starting Business Stndard crawler with full article content")
+    run_business_std()
+
