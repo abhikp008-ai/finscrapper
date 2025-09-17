@@ -1,0 +1,16 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.13.5",
+    "django>=5.2.6",
+    "django-bootstrap5>=25.2",
+    "django-extensions>=4.1",
+    "httpx>=0.28.1",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.2",
+    "pillow>=11.3.0",
+    "python-dateutil>=2.9.0.post0",
+]
