@@ -5,8 +5,9 @@ Manual Google OAuth Authentication
 This script generates an authorization URL for you to visit manually.
 """
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 import pickle
+import json
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -16,7 +17,22 @@ SCOPES = [
 def generate_auth_url():
     """Generate OAuth authorization URL"""
     try:
-        flow = InstalledAppFlow.from_client_secrets_file('google_credentials.json', SCOPES)
+        # Check if this is web or installed app credentials
+        with open('google_credentials.json', 'r') as f:
+            creds_data = json.load(f)
+        
+        if 'web' in creds_data:
+            # Web application flow
+            flow = Flow.from_client_secrets_file(
+                'google_credentials.json',
+                scopes=SCOPES,
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # For manual copy-paste
+            )
+        else:
+            # Desktop application flow
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            flow = InstalledAppFlow.from_client_secrets_file('google_credentials.json', SCOPES)
+        
         auth_url, _ = flow.authorization_url(prompt='consent')
         
         print("=== Google Sheets OAuth Authorization ===")
@@ -24,10 +40,13 @@ def generate_auth_url():
         print("Please visit this URL in your browser:")
         print(f"{auth_url}")
         print()
-        print("After authorization, you'll be redirected to a localhost URL like:")
-        print("http://localhost:8080/?state=...&code=...")
-        print()
-        print("Copy the ENTIRE redirect URL and use it in the next step.")
+        if 'web' in creds_data:
+            print("After authorization, you'll see an authorization code.")
+            print("Copy the authorization code and use it in the next step.")
+        else:
+            print("After authorization, you'll be redirected to a localhost URL like:")
+            print("http://localhost:8080/?state=...&code=...")
+            print("Copy the ENTIRE redirect URL and use it in the next step.")
         
         return flow
     except Exception as e:
@@ -37,7 +56,22 @@ def generate_auth_url():
 def complete_auth_with_code(code):
     """Complete authentication with authorization code"""
     try:
-        flow = InstalledAppFlow.from_client_secrets_file('google_credentials.json', SCOPES)
+        # Check if this is web or installed app credentials
+        with open('google_credentials.json', 'r') as f:
+            creds_data = json.load(f)
+        
+        if 'web' in creds_data:
+            # Web application flow
+            flow = Flow.from_client_secrets_file(
+                'google_credentials.json',
+                scopes=SCOPES,
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+            )
+        else:
+            # Desktop application flow
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            flow = InstalledAppFlow.from_client_secrets_file('google_credentials.json', SCOPES)
+        
         flow.fetch_token(code=code)
         
         # Save credentials
