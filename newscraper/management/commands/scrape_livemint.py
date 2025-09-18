@@ -5,7 +5,9 @@ import logging
 import time
 import random
 from bs4 import BeautifulSoup
-from newscraper.models import Article, ScrapingJob
+from newscraper.google_sheets_service import GoogleSheetsService
+from newscraper.sheets_config import get_or_create_spreadsheet_id, save_spreadsheet_id, SPREADSHEET_NAME
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -24,38 +26,37 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         max_pages = options['max_pages']
         
-        job = ScrapingJob.objects.create(
-            source='livemint',
-            started_at=timezone.now(),
-            status='running',
-            created_by_id=1
-        )
-        
         try:
-            scraped = self.scrape_news(max_pages)
+            # Initialize Google Sheets service
+            sheets_service = GoogleSheetsService()
             
-            job.articles_scraped = scraped
-            job.status = 'completed'
-            job.completed_at = timezone.now()
-            job.save()
+            # Get or create spreadsheet
+            spreadsheet_id = get_or_create_spreadsheet_id()
+            if not spreadsheet_id:
+                spreadsheet_id = sheets_service.create_spreadsheet(SPREADSHEET_NAME)
+                save_spreadsheet_id(spreadsheet_id)
+                self.stdout.write(f'Created new spreadsheet: {sheets_service.get_sheet_url(spreadsheet_id)}')
+            
+            articles = self.scrape_news(max_pages)
+            
+            # Store articles in Google Sheets
+            if articles:
+                sheets_service.store_news_data(spreadsheet_id, articles, 'LiveMint')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {scraped} articles from LiveMint')
+                self.style.SUCCESS(f'Successfully scraped {len(articles)} articles from LiveMint to Google Sheets')
             )
+            self.stdout.write(f'View data at: {sheets_service.get_sheet_url(spreadsheet_id)}')
             
         except Exception as e:
-            job.status = 'failed'
-            job.error_message = str(e)
-            job.completed_at = timezone.now()
-            job.save()
-            
+            logger.error(f'Failed to scrape LiveMint: {e}')
             self.stdout.write(
                 self.style.ERROR(f'Failed to scrape LiveMint: {e}')
             )
 
     def scrape_news(self, max_pages):
         base_url = "https://www.livemint.com/latest-news"
-        scraped_count = 0
+        articles = []
         
         # User agents for rotation
         user_agents = [
@@ -83,15 +84,13 @@ class Command(BaseCommand):
                     logger.info(f"No posts found on page {page}")
                     break
                 
-                for post in posts:
-                    if self.save_article(post):
-                        scraped_count += 1
+                articles.extend(posts)
                         
             except Exception as e:
                 logger.error(f"Error fetching page {page}: {e}")
                 break
                 
-        return scraped_count
+        return articles
 
     def extract_posts_from_page(self, html):
         soup = BeautifulSoup(html, "html.parser")
@@ -113,8 +112,9 @@ class Command(BaseCommand):
                 posts.append({
                     "title": title,
                     "url": url,
-                    "category": "News",
-                    "content": content
+                    "date": timezone.now().strftime('%Y-%m-%d'),
+                    "content": content,
+                    "source": "livemint"
                 })
             
         return posts
@@ -147,19 +147,3 @@ class Command(BaseCommand):
             logger.error(f"Error extracting content from {url}: {e}")
             return ""
 
-    def save_article(self, post_data):
-        try:
-            article, created = Article.objects.get_or_create(
-                url=post_data['url'],
-                defaults={
-                    'title': post_data['title'],
-                    'category': post_data['category'],
-                    'content': post_data['content'],
-                    'source': 'livemint',
-                    'scraped_at': timezone.now(),
-                }
-            )
-            return created
-        except Exception as e:
-            logger.error(f"Error saving article {post_data['url']}: {e}")
-            return False

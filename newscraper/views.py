@@ -4,14 +4,19 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.core.paginator import Paginator
-from django.db.models import Q
 from django.utils import timezone
 from django.core.management import call_command
 from datetime import datetime, timedelta
 import csv
 import io
-from .models import Article, UserProfile, ScrapingJob
+from .models import UserProfile
+from .google_sheets_service import GoogleSheetsService
+from .sheets_config import get_or_create_spreadsheet_id, SPREADSHEET_NAME
 from django.contrib.auth.models import User
+import logging
+import os
+
+logger = logging.getLogger(__name__)
 
 
 def home(request):
@@ -63,47 +68,107 @@ def dashboard(request):
     date_to = request.GET.get('date_to', '')
     search = request.GET.get('search', '')
     
-    # Build queryset with filters
-    articles = Article.objects.all()
-    
-    if source:
-        articles = articles.filter(source=source)
-    if category:
-        articles = articles.filter(category__icontains=category)
-    if search:
-        articles = articles.filter(
-            Q(title__icontains=search) | Q(content__icontains=search)
-        )
-    if date_from:
-        try:
-            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-            articles = articles.filter(scraped_at__date__gte=date_from_parsed)
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-            articles = articles.filter(scraped_at__date__lte=date_to_parsed)
-        except ValueError:
-            pass
-    
-    # Pagination
-    paginator = Paginator(articles, 20)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    # Statistics
-    total_articles = Article.objects.count()
-    recent_jobs = ScrapingJob.objects.all()[:5]
-    
-    # Get available sources and categories for filters
-    available_sources = Article.objects.values_list('source', flat=True).distinct()
-    available_categories = Article.objects.values_list('category', flat=True).distinct()
+    try:
+        # Get Google Sheets data
+        sheets_service = GoogleSheetsService()
+        spreadsheet_id = get_or_create_spreadsheet_id()
+        
+        if not spreadsheet_id:
+            # No spreadsheet exists yet
+            all_articles = []
+            total_articles = 0
+            available_sources = []
+            available_categories = []
+            filtered_articles = []
+        else:
+            all_articles = sheets_service.get_all_news_data(spreadsheet_id)
+            
+            # Apply filters
+            filtered_articles = []
+            for article in all_articles:
+                # Source filter
+                if source and article.get('source', '').lower() != source.lower():
+                    continue
+                
+                # Category filter (if we had categories in sheets data)
+                # Skip category filter for now as sheets data structure doesn't include it
+                
+                # Search filter
+                if search:
+                    search_lower = search.lower()
+                    title = article.get('title', '').lower()
+                    content = article.get('content', '').lower()
+                    if search_lower not in title and search_lower not in content:
+                        continue
+                
+                # Date filters
+                article_date_str = article.get('date', '') or article.get('scraped_at', '')
+                if date_from or date_to:
+                    try:
+                        if article_date_str:
+                            # Try different date formats
+                            article_date = None
+                            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S']:
+                                try:
+                                    article_date = datetime.strptime(article_date_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                            
+                            if article_date:
+                                if date_from:
+                                    try:
+                                        date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+                                        if article_date < date_from_parsed:
+                                            continue
+                                    except ValueError:
+                                        pass
+                                
+                                if date_to:
+                                    try:
+                                        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+                                        if article_date > date_to_parsed:
+                                            continue
+                                    except ValueError:
+                                        pass
+                    except Exception:
+                        # Skip articles with invalid dates if date filters are applied
+                        if date_from or date_to:
+                            continue
+                
+                filtered_articles.append(article)
+            
+            # Get statistics and filter options
+            total_articles = len(all_articles)
+            available_sources = list(set([article.get('source', '') for article in all_articles if article.get('source')]))
+            available_categories = []  # Categories not used in sheets structure
+        
+        # Pagination
+        paginator = Paginator(filtered_articles, 20)
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+        
+        # Add spreadsheet URL for easy access
+        spreadsheet_url = sheets_service.get_sheet_url(spreadsheet_id) if spreadsheet_id else None
+        
+    except Exception as e:
+        logger.error(f"Error accessing Google Sheets data: {e}")
+        messages.error(request, "Error loading data from Google Sheets. Please check your connection.")
+        all_articles = []
+        total_articles = 0
+        available_sources = []
+        available_categories = []
+        spreadsheet_url = None
+        filtered_articles = []
+        
+        # Create empty pagination
+        paginator = Paginator(filtered_articles, 20)
+        page_obj = paginator.get_page(1)
     
     context = {
         'page_obj': page_obj,
         'total_articles': total_articles,
-        'recent_jobs': recent_jobs,
+        'spreadsheet_url': spreadsheet_url,
         'available_sources': available_sources,
         'available_categories': available_categories,
         'current_filters': {
@@ -121,57 +186,98 @@ def dashboard(request):
 @login_required
 @user_passes_test(can_download)
 def download_articles(request):
-    """Download articles as CSV"""
-    # Get filter parameters
+    """Download articles as CSV from Google Sheets"""
+    # Get filter parameters (same as dashboard)
     source = request.GET.get('source', '')
     category = request.GET.get('category', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
     search = request.GET.get('search', '')
     
-    # Build queryset with same filters as dashboard
-    articles = Article.objects.all()
-    
-    if source:
-        articles = articles.filter(source=source)
-    if category:
-        articles = articles.filter(category__icontains=category)
-    if search:
-        articles = articles.filter(
-            Q(title__icontains=search) | Q(content__icontains=search)
-        )
-    if date_from:
-        try:
-            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-            articles = articles.filter(scraped_at__date__gte=date_from_parsed)
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-            articles = articles.filter(scraped_at__date__lte=date_to_parsed)
-        except ValueError:
-            pass
-    
-    # Create CSV response
-    response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="finscrap_articles_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-    
-    writer = csv.writer(response)
-    writer.writerow(['ID', 'Title', 'URL', 'Source', 'Category', 'Scraped At', 'Content'])
-    
-    for article in articles:
-        writer.writerow([
-            article.id,
-            article.title,
-            article.url,
-            article.get_source_display(),
-            article.category,
-            article.scraped_at.strftime('%Y-%m-%d %H:%M:%S'),
-            article.content[:500] + '...' if len(article.content) > 500 else article.content
-        ])
-    
-    return response
+    try:
+        # Get Google Sheets data with same filtering logic as dashboard
+        sheets_service = GoogleSheetsService()
+        spreadsheet_id = get_or_create_spreadsheet_id()
+        
+        if not spreadsheet_id:
+            messages.error(request, "No data available. Please run scrapers first.")
+            return redirect('dashboard')
+        
+        all_articles = sheets_service.get_all_news_data(spreadsheet_id)
+        
+        # Apply same filters as dashboard
+        filtered_articles = []
+        for article in all_articles:
+            # Source filter
+            if source and article.get('source', '').lower() != source.lower():
+                continue
+            
+            # Search filter
+            if search:
+                search_lower = search.lower()
+                title = article.get('title', '').lower()
+                content = article.get('content', '').lower()
+                if search_lower not in title and search_lower not in content:
+                    continue
+            
+            # Date filters
+            article_date_str = article.get('date', '') or article.get('scraped_at', '')
+            if date_from or date_to:
+                try:
+                    if article_date_str:
+                        article_date = None
+                        for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S']:
+                            try:
+                                article_date = datetime.strptime(article_date_str, fmt).date()
+                                break
+                            except ValueError:
+                                continue
+                        
+                        if article_date:
+                            if date_from:
+                                try:
+                                    date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+                                    if article_date < date_from_parsed:
+                                        continue
+                                except ValueError:
+                                    pass
+                            
+                            if date_to:
+                                try:
+                                    date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+                                    if article_date > date_to_parsed:
+                                        continue
+                                except ValueError:
+                                    pass
+                except Exception:
+                    if date_from or date_to:
+                        continue
+            
+            filtered_articles.append(article)
+        
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="finscrap_articles_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['Title', 'URL', 'Source', 'Date', 'Scraped At', 'Content'])
+        
+        for i, article in enumerate(filtered_articles, 1):
+            writer.writerow([
+                article.get('title', ''),
+                article.get('url', ''),
+                article.get('source', ''),
+                article.get('date', ''),
+                article.get('scraped_at', ''),
+                (article.get('content', '')[:500] + '...') if len(article.get('content', '')) > 500 else article.get('content', '')
+            ])
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error downloading articles from Google Sheets: {e}")
+        messages.error(request, "Error downloading data. Please try again.")
+        return redirect('dashboard')
 
 
 @login_required
@@ -215,39 +321,17 @@ def edit_user_permissions(request, user_id):
 @login_required
 @user_passes_test(can_monitor)
 def run_scraper(request):
-    """Manual scraper execution"""
+    """Manual scraper execution - now saves to Google Sheets"""
     if request.method == 'POST':
         scraper = request.POST.get('scraper')
         max_pages = int(request.POST.get('max_pages', 1))
         
-        # Map scraper command names to source values
-        scraper_to_source = {
-            'scrape_moneycontrol': 'moneycontrol',
-            'scrape_financialexpress': 'financialexpress',
-            'scrape_livemint': 'livemint',
-            'scrape_all': 'moneycontrol',  # Use first source as default for 'all'
-        }
-        
-        # Create scraping job record
-        job = ScrapingJob.objects.create(
-            source=scraper_to_source.get(scraper, 'moneycontrol'),
-            status='running',
-            started_at=timezone.now(),
-            created_by=request.user
-        )
-        
         try:
             # Execute the management command with proper kwargs
             call_command(scraper, max_pages=max_pages)
-            job.status = 'completed'
-            job.completed_at = timezone.now()
-            job.save()
-            messages.success(request, f'Successfully completed {scraper} scraping ({max_pages} pages)')
+            messages.success(request, f'Successfully completed {scraper} scraping ({max_pages} pages). Data saved to Google Sheets.')
         except Exception as e:
-            job.status = 'failed'
-            job.error_message = str(e)
-            job.completed_at = timezone.now()
-            job.save()
+            logger.error(f'Error running {scraper}: {e}')
             messages.error(request, f'Error running {scraper}: {str(e)}')
         
         return redirect('dashboard')

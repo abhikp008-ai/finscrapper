@@ -1,0 +1,7 @@
+
+# Google Sheets configuration
+sheets_config.json
+token.pickle
+# Google OAuth files
+token.pickle
+google_credentials.json
