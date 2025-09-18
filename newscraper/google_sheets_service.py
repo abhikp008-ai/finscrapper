@@ -1,32 +1,71 @@
 import json
 import logging
 from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 import os
+import pickle
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Scopes for Google Sheets and Drive APIs
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file'
+]
+
 class GoogleSheetsService:
-    def __init__(self):
-        self.api_key = os.getenv('GOOGLE_SHEETS_API_KEY')
+    def __init__(self, credentials_file='google_credentials.json'):
+        self.credentials_file = credentials_file
+        self.token_file = 'token.pickle'
         self.service = None
+        self.drive_service = None
         self._authenticate()
     
     def _authenticate(self):
-        """Authenticate using API key"""
-        if not self.api_key:
+        """Authenticate and build the service"""
+        creds = None
+        
+        # Check if we have stored credentials
+        if not os.path.exists(self.credentials_file):
             raise Exception(
-                "Google Sheets API key not found. Please set the GOOGLE_SHEETS_API_KEY "
-                "environment variable with your Google API key."
+                "Google credentials file not found. Please ensure you have provided "
+                "Google API credentials. Contact your administrator for setup instructions."
             )
         
-        try:
-            # Build service with API key authentication
-            self.service = build('sheets', 'v4', developerKey=self.api_key)
-            logger.info("Google Sheets service initialized with API key")
-        except Exception as e:
-            logger.error(f"Failed to initialize Google Sheets service: {e}")
-            raise
+        # Load existing token
+        if os.path.exists(self.token_file):
+            with open(self.token_file, 'rb') as token:
+                try:
+                    creds = pickle.load(token)
+                except Exception as e:
+                    logger.error(f"Failed to load token: {e}")
+                    creds = None
+        
+        # If no valid credentials are available, we need OAuth
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                except Exception as e:
+                    logger.error(f"Failed to refresh token: {e}")
+                    creds = None
+            
+            if not creds:
+                # For server deployment, provide clear instructions
+                raise Exception(
+                    "Google Sheets authentication required. "
+                    "This requires manual OAuth setup. Please contact your administrator "
+                    "or check the application documentation for setup instructions."
+                )
+            
+            # Save the credentials for next run
+            with open(self.token_file, 'wb') as token:
+                pickle.dump(creds, token)
+        
+        self.service = build('sheets', 'v4', credentials=creds)
+        self.drive_service = build('drive', 'v3', credentials=creds)
     
     def create_spreadsheet(self, title):
         """Create a new Google Spreadsheet"""
