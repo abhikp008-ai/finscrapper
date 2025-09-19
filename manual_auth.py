@@ -22,11 +22,11 @@ def generate_auth_url():
             creds_data = json.load(f)
         
         if 'web' in creds_data:
-            # Web application flow
+            # Web application flow  
             flow = Flow.from_client_secrets_file(
                 'google_credentials.json',
                 scopes=SCOPES,
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # For manual copy-paste
+                redirect_uri='http://localhost'  # Use configured redirect URI
             )
         else:
             # Desktop application flow
@@ -65,7 +65,7 @@ def complete_auth_with_code(code):
             flow = Flow.from_client_secrets_file(
                 'google_credentials.json',
                 scopes=SCOPES,
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+                redirect_uri='http://localhost'
             )
         else:
             # Desktop application flow
