@@ -34,10 +34,6 @@ waitForPort = 5000
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 35407
-externalPort = 3000
-
 [deployment]
 deploymentTarget = "autoscale"
 run = ["sh", "-c", "gunicorn --bind=0.0.0.0:$PORT --workers=4 finscrap.wsgi:application"]
