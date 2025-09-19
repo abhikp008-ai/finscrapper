@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import csv
 import io
 from .models import UserProfile
+from typing import Any
 from .google_sheets_service import GoogleSheetsService
 from .sheets_config import get_or_create_spreadsheet_id, SPREADSHEET_NAME
 from django.contrib.auth.models import User
@@ -43,8 +44,8 @@ def can_monitor(user):
     if user.is_superuser:
         return True
     try:
-        return user.userprofile.can_monitor
-    except UserProfile.DoesNotExist:
+        return user.userprofile.can_monitor  # type: ignore
+    except UserProfile.DoesNotExist:  # type: ignore
         return False
 
 
@@ -53,8 +54,8 @@ def can_download(user):
     if user.is_superuser:
         return True
     try:
-        return user.userprofile.can_download
-    except UserProfile.DoesNotExist:
+        return user.userprofile.can_download  # type: ignore
+    except UserProfile.DoesNotExist:  # type: ignore
         return False
 
 

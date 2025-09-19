@@ -1,11 +1,12 @@
 import json
 import logging
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build, Resource
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import os
 import pickle
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,8 @@ SCOPES = [
 
 class GoogleSheetsService:
     def __init__(self):
-        self.service = None
-        self.drive_service = None
+        self.service: Optional[Resource] = None
+        self.drive_service: Optional[Resource] = None
         self._authenticate()
     
     def _authenticate(self):
