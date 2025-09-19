@@ -107,10 +107,10 @@
                                                 </a>
                                             </td>
                                             <td>
-                                                <span class="badge bg-primary">{{ article.get_source_display }}</span>
+                                                <span class="badge bg-primary">{{ article.source|capfirst }}</span>
                                             </td>
-                                            <td>{{ article.category }}</td>
-                                            <td>{{ article.scraped_at|date:"M d, Y H:i" }}</td>
+                                            <td>{{ article.category|default:"N/A" }}</td>
+                                            <td>{{ article.scraped_at|default:article.date|date:"M d, Y H:i" }}</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>

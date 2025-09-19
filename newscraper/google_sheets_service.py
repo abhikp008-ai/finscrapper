@@ -57,27 +57,40 @@ class GoogleSheetsService:
     
     def _load_credentials(self):
         """Load credentials from secure storage"""
-        token_file = os.getenv('GOOGLE_TOKEN_FILE', 'token.pickle')
+        # Try environment variable first, then fallback to secure location
+        token_file = os.getenv('GOOGLE_TOKEN_FILE', '/tmp/secure/token.pickle')
+        
+        # If environment variable not set, also try the secure location
+        if not os.path.exists(token_file) and token_file == 'token.pickle':
+            token_file = '/tmp/secure/token.pickle'
         
         if os.path.exists(token_file):
             try:
                 with open(token_file, 'rb') as token:
                     return pickle.load(token)
             except Exception as e:
-                logger.error(f"Failed to load credentials: {e}")
+                logger.error(f"Failed to load credentials from {token_file}: {e}")
                 return None
+        
+        logger.error(f"Token file not found at {token_file}")
         return None
     
     def _save_credentials(self, creds):
         """Save credentials to secure storage"""
-        token_file = os.getenv('GOOGLE_TOKEN_FILE', 'token.pickle')
+        # Use secure location as default
+        token_file = os.getenv('GOOGLE_TOKEN_FILE', '/tmp/secure/token.pickle')
+        
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(token_file), exist_ok=True)
+            
             with open(token_file, 'wb') as token:
                 pickle.dump(creds, token)
             # Secure the file permissions
             os.chmod(token_file, 0o600)
+            logger.info(f"Credentials saved to {token_file}")
         except Exception as e:
-            logger.error(f"Failed to save credentials: {e}")
+            logger.error(f"Failed to save credentials to {token_file}: {e}")
     
     def create_spreadsheet(self, title):
         """Create a new Google Spreadsheet"""
