@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - FinScrap</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <h1 class="text-center mb-4">Privacy Policy</h1>
+                <div class="mb-3 text-center">
+                    <small class="text-muted">Last updated: {{ "now"|date:"F d, Y" }}</small>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h2>1. Introduction</h2>
+                        <p>FinScrap ("we", "our", or "us") operates a financial news scraping and monitoring platform. This privacy policy explains how we collect, use, and protect your information when you use our service that integrates with Google APIs.</p>
+
+                        <h2>2. Information We Collect</h2>
+                        <h4>2.1 Account Information</h4>
+                        <ul>
+                            <li>Username and password for authentication</li>
+                            <li>User permissions (monitoring and download capabilities)</li>
+                            <li>Login timestamps and activity logs</li>
+                        </ul>
+
+                        <h4>2.2 Google API Data</h4>
+                        <p>Our application uses Google Sheets API and Google Drive API to:</p>
+                        <ul>
+                            <li><strong>Google Sheets API</strong>: Create, read, and write spreadsheet data for storing scraped financial news articles</li>
+                            <li><strong>Google Drive API</strong>: Manage file permissions and access to created spreadsheets</li>
+                        </ul>
+
+                        <h2>3. How We Use Google API Data</h2>
+                        <p>We use Google API access solely for the following purposes:</p>
+                        <ul>
+                            <li><strong>Data Storage</strong>: Store scraped financial news articles in Google Sheets as an alternative to local database storage</li>
+                            <li><strong>Data Retrieval</strong>: Read stored data from Google Sheets to display on the dashboard interface</li>
+                            <li><strong>Data Management</strong>: Organize and manage spreadsheet structure with proper headers and formatting</li>
+                            <li><strong>Export Functionality</strong>: Enable users to download CSV files of scraped data</li>
+                        </ul>
+
+                        <h2>4. Data Access and Sharing</h2>
+                        <h4>4.1 Google Account Access</h4>
+                        <p>When you authenticate with Google OAuth, we request the following scopes:</p>
+                        <ul>
+                            <li><code>https://www.googleapis.com/auth/spreadsheets</code> - To create, read, and modify Google Sheets</li>
+                            <li><code>https://www.googleapis.com/auth/drive.file</code> - To manage files created by our application</li>
+                        </ul>
+
+                        <h4>4.2 Data Limitations</h4>
+                        <p>We do <strong>NOT</strong>:</p>
+                        <ul>
+                            <li>Access any Google data outside of our application's created files</li>
+                            <li>Read your personal files, emails, or other Google services data</li>
+                            <li>Share your Google data with third parties</li>
+                            <li>Use your data for advertising or marketing purposes</li>
+                            <li>Store your Google credentials - they are managed securely by Google's OAuth system</li>
+                        </ul>
+
+                        <h2>5. Data Storage and Security</h2>
+                        <h4>5.1 Google Data Storage</h4>
+                        <ul>
+                            <li>Scraped news data is stored in Google Sheets owned by your Google account</li>
+                            <li>You maintain full ownership and control of all spreadsheet data</li>
+                            <li>Authentication tokens are stored securely and encrypted</li>
+                        </ul>
+
+                        <h4>5.2 Local Application Data</h4>
+                        <ul>
+                            <li>User account information is stored securely in our application database</li>
+                            <li>All data transmission uses HTTPS encryption</li>
+                            <li>Access is restricted by user authentication and role-based permissions</li>
+                        </ul>
+
+                        <h2>6. Data Retention</h2>
+                        <ul>
+                            <li><strong>Google Sheets Data</strong>: Retained in your Google Drive until you choose to delete it</li>
+                            <li><strong>Authentication Tokens</strong>: Stored until you revoke access or tokens expire</li>
+                            <li><strong>Application Logs</strong>: Retained for 30 days for debugging and security purposes</li>
+                        </ul>
+
+                        <h2>7. Your Rights and Controls</h2>
+                        <h4>7.1 Google Account Control</h4>
+                        <ul>
+                            <li>You can revoke our app's access at any time through your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google Account Settings</a></li>
+                            <li>You can delete any spreadsheets created by our application</li>
+                            <li>You maintain full ownership of all data stored in Google Sheets</li>
+                        </ul>
+
+                        <h4>7.2 Application Account Control</h4>
+                        <ul>
+                            <li>Contact administrators to modify your user permissions</li>
+                            <li>Request account deletion and data removal</li>
+                            <li>Access and export your scraped data at any time</li>
+                        </ul>
+
+                        <h2>8. Third-Party Services</h2>
+                        <p>Our application integrates with:</p>
+                        <ul>
+                            <li><strong>Google APIs</strong>: Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a></li>
+                            <li><strong>Financial News Websites</strong>: We scrape publicly available news content from MoneyControl, LiveMint, and Financial Express</li>
+                        </ul>
+
+                        <h2>9. Compliance</h2>
+                        <p>This application complies with:</p>
+                        <ul>
+                            <li><a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a></li>
+                            <li><a href="https://developers.google.com/identity/protocols/oauth2/policies" target="_blank" rel="noopener">Google OAuth 2.0 Policies</a></li>
+                            <li>Data minimization principles - we only request necessary permissions</li>
+                        </ul>
+
+                        <h2>10. Updates to This Policy</h2>
+                        <p>We may update this privacy policy to reflect changes in our practices or legal requirements. Updated versions will be posted on this page with a new "Last updated" date.</p>
+
+                        <h2>11. Contact Information</h2>
+                        <p>For questions about this privacy policy or our data practices, please contact your system administrator.</p>
+
+                        <hr>
+                        <div class="text-center mt-4">
+                            <a href="{% url 'home' %}" class="btn btn-primary">Return to Application</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -10,4 +10,5 @@ urlpatterns = [
     path('manage-users/', views.manage_users, name='manage_users'),
     path('edit-user/<int:user_id>/', views.edit_user_permissions, name='edit_user_permissions'),
     path('run-scraper/', views.run_scraper, name='run_scraper'),
+    path('privacy-policy/', views.privacy_policy, name='privacy_policy'),
 ]

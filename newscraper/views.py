@@ -352,3 +352,8 @@ def run_scraper(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
+
+
+def privacy_policy(request):
+    """Display privacy policy page for Google Cloud API compliance"""
+    return render(request, 'newscraper/privacy_policy.html')
