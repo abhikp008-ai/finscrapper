@@ -195,6 +195,17 @@ class GoogleSheetsService:
             # Check if sheet exists, create if not
             try:
                 existing_data = self.read_sheet_data(spreadsheet_id, sheet_name)
+                # Check if the sheet has proper headers
+                if not existing_data or (existing_data and existing_data[0] != headers):
+                    # Sheet exists but no headers or wrong headers, recreate with proper headers
+                    # Clear the sheet first
+                    self.service.spreadsheets().values().clear(
+                        spreadsheetId=spreadsheet_id,
+                        range=f"{sheet_name}!A:Z"
+                    ).execute()
+                    # Add proper headers
+                    self.append_data(spreadsheet_id, sheet_name, [headers])
+                    existing_data = [headers]
             except:
                 self.create_sheet_with_headers(spreadsheet_id, sheet_name, headers)
                 existing_data = [headers]  # Just headers
