@@ -1,7 +1,44 @@
 
 # Google Sheets configuration
 sheets_config.json
-token.pickle
-# Google OAuth files
+
+# Google OAuth files - NEVER commit these!
 token.pickle
 google_credentials.json
+client_secret_*.json
+*.json.backup
+auth_token*
+
+# Environment and secrets
+.env
+*.key
+*.pem
+secrets.txt
+
+# Python cache and temp files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

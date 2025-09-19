@@ -16,56 +16,68 @@ SCOPES = [
 ]
 
 class GoogleSheetsService:
-    def __init__(self, credentials_file='google_credentials.json'):
-        self.credentials_file = credentials_file
-        self.token_file = 'token.pickle'
+    def __init__(self):
         self.service = None
         self.drive_service = None
         self._authenticate()
     
     def _authenticate(self):
-        """Authenticate and build the service"""
-        creds = None
-        
-        # Check if we have stored credentials
-        if not os.path.exists(self.credentials_file):
+        """Authenticate using environment-managed credentials"""
+        try:
+            # Try to load from environment or secure location
+            creds = self._load_credentials()
+            
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    try:
+                        creds.refresh(Request())
+                        self._save_credentials(creds)
+                    except Exception as e:
+                        logger.error(f"Failed to refresh token: {e}")
+                        raise Exception(
+                            "Google Sheets authentication expired. Please run the setup command: "
+                            "python manage.py setup_google_auth"
+                        )
+                else:
+                    raise Exception(
+                        "Google Sheets authentication not found. Please run the setup command: "
+                        "python manage.py setup_google_auth"
+                    )
+            
+            self.service = build('sheets', 'v4', credentials=creds)
+            self.drive_service = build('drive', 'v3', credentials=creds)
+            logger.info("Google Sheets service initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Google Sheets authentication failed: {e}")
             raise Exception(
-                "Google credentials file not found. Please ensure you have provided "
-                "Google API credentials. Contact your administrator for setup instructions."
+                f"Google Sheets service unavailable: {str(e)}. "
+                "Please ensure authentication is properly configured."
             )
+    
+    def _load_credentials(self):
+        """Load credentials from secure storage"""
+        token_file = os.getenv('GOOGLE_TOKEN_FILE', 'token.pickle')
         
-        # Load existing token
-        if os.path.exists(self.token_file):
-            with open(self.token_file, 'rb') as token:
-                try:
-                    creds = pickle.load(token)
-                except Exception as e:
-                    logger.error(f"Failed to load token: {e}")
-                    creds = None
-        
-        # If no valid credentials are available, we need OAuth
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                except Exception as e:
-                    logger.error(f"Failed to refresh token: {e}")
-                    creds = None
-            
-            if not creds:
-                # For server deployment, provide clear instructions
-                raise Exception(
-                    "Google Sheets authentication required. "
-                    "This requires manual OAuth setup. Please contact your administrator "
-                    "or check the application documentation for setup instructions."
-                )
-            
-            # Save the credentials for next run
-            with open(self.token_file, 'wb') as token:
+        if os.path.exists(token_file):
+            try:
+                with open(token_file, 'rb') as token:
+                    return pickle.load(token)
+            except Exception as e:
+                logger.error(f"Failed to load credentials: {e}")
+                return None
+        return None
+    
+    def _save_credentials(self, creds):
+        """Save credentials to secure storage"""
+        token_file = os.getenv('GOOGLE_TOKEN_FILE', 'token.pickle')
+        try:
+            with open(token_file, 'wb') as token:
                 pickle.dump(creds, token)
-        
-        self.service = build('sheets', 'v4', credentials=creds)
-        self.drive_service = build('drive', 'v3', credentials=creds)
+            # Secure the file permissions
+            os.chmod(token_file, 0o600)
+        except Exception as e:
+            logger.error(f"Failed to save credentials: {e}")
     
     def create_spreadsheet(self, title):
         """Create a new Google Spreadsheet"""
@@ -161,33 +173,55 @@ class GoogleSheetsService:
         return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
     
     def store_news_data(self, spreadsheet_id, news_data, source=None):
-        """Store news data in the appropriate sheet"""
+        """Store news data in the appropriate sheet with deduplication"""
         try:
             sheet_name = source or 'News_Data'
             headers = ['Title', 'URL', 'Date', 'Content', 'Source', 'Scraped_At']
             
             # Check if sheet exists, create if not
             try:
-                self.read_sheet_data(spreadsheet_id, sheet_name, f"{sheet_name}!A1")
+                existing_data = self.read_sheet_data(spreadsheet_id, sheet_name)
             except:
                 self.create_sheet_with_headers(spreadsheet_id, sheet_name, headers)
+                existing_data = [headers]  # Just headers
             
-            # Prepare data rows
-            rows = []
+            # Get existing URLs for deduplication
+            existing_urls = set()
+            if len(existing_data) > 1:  # More than just headers
+                url_column_index = 1  # URL is the second column (index 1)
+                for row in existing_data[1:]:  # Skip header row
+                    if len(row) > url_column_index and row[url_column_index]:
+                        existing_urls.add(row[url_column_index].strip())
+            
+            # Prepare data rows, filtering out duplicates
+            new_rows = []
+            skipped_count = 0
+            
             for item in news_data:
-                row = [
-                    item.get('title', ''),
-                    item.get('url', ''),
-                    item.get('date', ''),
-                    item.get('content', ''),
-                    item.get('source', source or ''),
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                ]
-                rows.append(row)
+                url = item.get('url', '').strip()
+                if url and url not in existing_urls:
+                    row = [
+                        item.get('title', ''),
+                        url,
+                        item.get('date', ''),
+                        item.get('content', ''),
+                        item.get('source', source or ''),
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    ]
+                    new_rows.append(row)
+                    existing_urls.add(url)  # Add to set to prevent duplicates in this batch
+                else:
+                    skipped_count += 1
             
-            if rows:
-                self.append_data(spreadsheet_id, sheet_name, rows)
-                logger.info(f'Stored {len(rows)} news items in {sheet_name}')
+            if new_rows:
+                self.append_data(spreadsheet_id, sheet_name, new_rows)
+                logger.info(f'Stored {len(new_rows)} new items in {sheet_name}')
+                if skipped_count > 0:
+                    logger.info(f'Skipped {skipped_count} duplicate items')
+            else:
+                logger.info(f'No new items to store in {sheet_name} (all duplicates)')
+            
+            return len(new_rows)
             
         except Exception as e:
             logger.error(f"Error storing news data: {e}")
