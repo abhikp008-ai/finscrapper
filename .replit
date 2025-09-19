@@ -22,20 +22,20 @@ args = "Django Server"
 name = "Django Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python manage.py runserver 0.0.0.0:5000"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "GOOGLE_TOKEN_FILE=\"/tmp/secure/token.pickle\" python manage.py runserver 0.0.0.0:5000"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
+localPort = 35407
 externalPort = 3000
 
 [deployment]
