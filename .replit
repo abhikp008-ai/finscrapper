@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "GOOGLE_TOKEN_FILE=\"/tmp/secure/token.pickle\" python manage.py runserver 0.0.0.0:5000"
+args = "GOOGLE_TOKEN_FILE=\".secrets/google/token.pickle\" python manage.py runserver 0.0.0.0:5000"
 waitForPort = 5000
 
 [[ports]]
