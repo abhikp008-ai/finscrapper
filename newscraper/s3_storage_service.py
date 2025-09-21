@@ -250,14 +250,14 @@ class S3StorageService:
             all_data = self.get_all_news_data()
             
             if source:
-                all_data = [item for item in all_data if item.get('source', '').lower() == source.lower()]
+                all_data = [item for item in all_data if str(item.get('source', '')).lower() == source.lower()]
             
             if search_query:
                 search_query = search_query.lower()
                 all_data = [
                     item for item in all_data 
-                    if search_query in item.get('title', '').lower() or 
-                       search_query in item.get('content', '').lower()
+                    if search_query in str(item.get('title', '')).lower() or 
+                       search_query in str(item.get('content', '')).lower()
                 ]
             
             return all_data

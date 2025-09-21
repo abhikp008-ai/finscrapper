@@ -18,6 +18,10 @@ author = "agent"
 task = "workflow.run"
 args = "Django Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Daily News Scraper"
+
 [[workflows.workflow]]
 name = "Django Server"
 author = "agent"
@@ -30,9 +34,24 @@ task = "shell.exec"
 args = "python manage.py runserver 0.0.0.0:5000"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Daily News Scraper"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python manage.py scrape_all_sources --max-pages 3"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 35443
+externalPort = 3001
 
 [[ports]]
 localPort = 39631
