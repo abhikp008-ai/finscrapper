@@ -10,6 +10,9 @@ client_secret_*.json
 *.json.backup
 auth_token*
 
+# Data storage - CSV files
+.data/
+
 # Environment and secrets
 .env
 *.key

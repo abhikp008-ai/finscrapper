@@ -27,10 +27,15 @@ class MegaStorageService:
             
             self.mega = Mega()
             self.m = self.mega.login(email, password)
+            
+            if self.m is None:
+                raise Exception("MEGA login failed - invalid credentials")
+                
             logger.info("MEGA authentication successful")
             
         except Exception as e:
             logger.error(f"MEGA authentication failed: {e}")
+            self.m = None
             raise Exception(f"MEGA service unavailable: {str(e)}")
     
     def store_news_data(self, data: List[Dict[str, Any]], source: str) -> int:
@@ -179,6 +184,9 @@ class MegaStorageService:
     def _upload_file(self, local_file_path: str, filename: str = None):
         """Upload file to MEGA, replacing existing if it exists"""
         try:
+            if self.m is None:
+                raise Exception("MEGA service not authenticated")
+                
             if not filename:
                 filename = os.path.basename(local_file_path)
             

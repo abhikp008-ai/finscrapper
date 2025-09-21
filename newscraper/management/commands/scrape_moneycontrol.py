@@ -3,8 +3,7 @@ from django.utils import timezone
 import httpx
 import logging
 from bs4 import BeautifulSoup
-from newscraper.google_sheets_service import GoogleSheetsService
-from newscraper.sheets_config import get_or_create_spreadsheet_id, save_spreadsheet_id, SPREADSHEET_NAME
+from newscraper.simple_file_storage_service import SimpleFileStorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -26,15 +25,9 @@ class Command(BaseCommand):
         categories = ["business", "economy", "markets", "trends"]
         
         try:
-            # Initialize Google Sheets service
-            sheets_service = GoogleSheetsService()
-            
-            # Get or create spreadsheet
-            spreadsheet_id = get_or_create_spreadsheet_id()
-            if not spreadsheet_id:
-                spreadsheet_id = sheets_service.create_spreadsheet(SPREADSHEET_NAME)
-                save_spreadsheet_id(spreadsheet_id)
-                self.stdout.write(f'Created new spreadsheet: {sheets_service.get_sheet_url(spreadsheet_id)}')
+            # Initialize storage service
+            storage_service = SimpleFileStorageService()
+            self.stdout.write(f'Using storage directory: {storage_service.storage_dir}')
             
             all_articles = []
             total_scraped = 0
@@ -46,19 +39,19 @@ class Command(BaseCommand):
                 total_scraped += len(articles)
                 self.stdout.write(f'Scraped {len(articles)} articles from {category}')
             
-            # Store all articles in Google Sheets
+            # Store all articles in CSV files
             if all_articles:
-                sheets_service.store_news_data(spreadsheet_id, all_articles, 'MoneyControl')
+                stored_count = storage_service.store_news_data(all_articles, 'MoneyControl')
+                self.stdout.write(f'Stored {stored_count} articles to CSV files')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl to Google Sheets')
+                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl to CSV files')
             )
-            self.stdout.write(f'View data at: {sheets_service.get_sheet_url(spreadsheet_id)}')
             
         except Exception as e:
             logger.error(f'Failed to scrape MoneyControl: {e}')
             self.stdout.write(
-                self.style.ERROR(f'Failed to scrape MoneyControl: {e}')
+                self.style.ERROR(f'Failed to scrape MoneyControl: Storage service error: {e}')
             )
 
     def scrape_category(self, category, max_pages):

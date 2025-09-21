@@ -11,8 +11,7 @@ import csv
 import io
 from .models import UserProfile
 from typing import Any
-from .google_sheets_service import GoogleSheetsService
-from .sheets_config import get_or_create_spreadsheet_id, SPREADSHEET_NAME
+from .simple_file_storage_service import SimpleFileStorageService
 from django.contrib.auth.models import User
 import logging
 import os
@@ -70,96 +69,84 @@ def dashboard(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get Google Sheets data
-        sheets_service = GoogleSheetsService()
-        spreadsheet_id = get_or_create_spreadsheet_id()
+        # Get CSV storage data
+        storage_service = SimpleFileStorageService()
+        all_articles = storage_service.get_all_news_data()
         
-        if not spreadsheet_id:
-            # No spreadsheet exists yet
-            all_articles = []
-            total_articles = 0
-            available_sources = []
-            available_categories = []
-            filtered_articles = []
-        else:
-            all_articles = sheets_service.get_all_news_data(spreadsheet_id)
+        # Apply filters
+        filtered_articles = []
+        for article in all_articles:
+            # Source filter
+            if source and article.get('source', '').lower() != source.lower():
+                continue
             
-            # Apply filters
-            filtered_articles = []
-            for article in all_articles:
-                # Source filter
-                if source and article.get('source', '').lower() != source.lower():
+            # Search filter
+            if search:
+                search_lower = search.lower()
+                title = article.get('title', '').lower()
+                content = article.get('content', '').lower()
+                if search_lower not in title and search_lower not in content:
                     continue
-                
-                # Category filter (if we had categories in sheets data)
-                # Skip category filter for now as sheets data structure doesn't include it
-                
-                # Search filter
-                if search:
-                    search_lower = search.lower()
-                    title = article.get('title', '').lower()
-                    content = article.get('content', '').lower()
-                    if search_lower not in title and search_lower not in content:
-                        continue
-                
-                # Date filters
-                article_date_str = article.get('date', '') or article.get('scraped_at', '')
-                if date_from or date_to:
-                    try:
-                        if article_date_str:
-                            # Try different date formats
-                            article_date = None
-                            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S']:
-                                try:
-                                    article_date = datetime.strptime(article_date_str, fmt).date()
-                                    break
-                                except ValueError:
-                                    continue
-                            
-                            if article_date:
-                                if date_from:
-                                    try:
-                                        date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-                                        if article_date < date_from_parsed:
-                                            continue
-                                    except ValueError:
-                                        pass
-                                
-                                if date_to:
-                                    try:
-                                        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-                                        if article_date > date_to_parsed:
-                                            continue
-                                    except ValueError:
-                                        pass
-                    except Exception:
-                        # Skip articles with invalid dates if date filters are applied
-                        if date_from or date_to:
-                            continue
-                
-                filtered_articles.append(article)
             
-            # Get statistics and filter options
-            total_articles = len(all_articles)
-            available_sources = list(set([article.get('source', '') for article in all_articles if article.get('source')]))
-            available_categories = []  # Categories not used in sheets structure
+            # Date filters
+            article_date_str = article.get('date', '') or article.get('scraped_at', '')
+            if date_from or date_to:
+                try:
+                    if article_date_str:
+                        # Try different date formats
+                        article_date = None
+                        for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S']:
+                            try:
+                                article_date = datetime.strptime(article_date_str, fmt).date()
+                                break
+                            except ValueError:
+                                continue
+                        
+                        if article_date:
+                            if date_from:
+                                try:
+                                    date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+                                    if article_date < date_from_parsed:
+                                        continue
+                                except ValueError:
+                                    pass
+                            
+                            if date_to:
+                                try:
+                                    date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+                                    if article_date > date_to_parsed:
+                                        continue
+                                except ValueError:
+                                    pass
+                except Exception:
+                    # Skip articles with invalid dates if date filters are applied
+                    if date_from or date_to:
+                        continue
+            
+            filtered_articles.append(article)
+            
+        # Get statistics and filter options  
+        total_articles = len(all_articles)
+        available_sources = list(set([article.get('source', '') for article in all_articles if article.get('source')]))
+        available_categories = []  # Categories not used in CSV structure
         
         # Pagination
         paginator = Paginator(filtered_articles, 20)
         page_number = request.GET.get('page')
         page_obj = paginator.get_page(page_number)
         
-        # Add spreadsheet URL for easy access
-        spreadsheet_url = sheets_service.get_sheet_url(spreadsheet_id) if spreadsheet_id else None
+        # Get storage info
+        storage_info = storage_service.get_storage_info()
+        storage_url = storage_info.get('storage_path', '')
         
     except Exception as e:
-        logger.error(f"Error accessing Google Sheets data: {e}")
-        messages.error(request, "Error loading data from Google Sheets. Please check your connection.")
+        logger.error(f"Error accessing CSV storage data: {e}")
+        messages.error(request, "Error loading data from CSV storage. Please check your storage.")
         all_articles = []
         total_articles = 0
         available_sources = []
         available_categories = []
-        spreadsheet_url = None
+        storage_url = None
         filtered_articles = []
         
         # Create empty pagination
@@ -169,7 +156,7 @@ def dashboard(request):
     context = {
         'page_obj': page_obj,
         'total_articles': total_articles,
-        'spreadsheet_url': spreadsheet_url,
+        'storage_url': storage_url,
         'available_sources': available_sources,
         'available_categories': available_categories,
         'current_filters': {
@@ -187,7 +174,7 @@ def dashboard(request):
 @login_required
 @user_passes_test(can_download)
 def download_articles(request):
-    """Download articles as CSV from Google Sheets"""
+    """Download articles as CSV from storage"""
     # Get filter parameters (same as dashboard)
     source = request.GET.get('source', '')
     category = request.GET.get('category', '')
@@ -196,15 +183,13 @@ def download_articles(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get Google Sheets data with same filtering logic as dashboard
-        sheets_service = GoogleSheetsService()
-        spreadsheet_id = get_or_create_spreadsheet_id()
+        # Get CSV storage data with same filtering logic as dashboard
+        storage_service = SimpleFileStorageService()
+        all_articles = storage_service.get_all_news_data()
         
-        if not spreadsheet_id:
+        if not all_articles:
             messages.error(request, "No data available. Please run scrapers first.")
             return redirect('dashboard')
-        
-        all_articles = sheets_service.get_all_news_data(spreadsheet_id)
         
         # Apply same filters as dashboard
         filtered_articles = []
@@ -276,7 +261,7 @@ def download_articles(request):
         return response
         
     except Exception as e:
-        logger.error(f"Error downloading articles from Google Sheets: {e}")
+        logger.error(f"Error downloading articles from CSV storage: {e}")
         messages.error(request, "Error downloading data. Please try again.")
         return redirect('dashboard')
 
