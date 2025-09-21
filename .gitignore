@@ -12,6 +12,7 @@ auth_token*
 
 # Data storage - CSV files
 .data/
+.mega_backup/
 
 # Environment and secrets
 .env

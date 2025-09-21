@@ -11,7 +11,7 @@ import csv
 import io
 from .models import UserProfile
 from typing import Any
-from .simple_file_storage_service import SimpleFileStorageService
+from .mega_csv_storage_service import MegaCSVStorageService
 from django.contrib.auth.models import User
 import logging
 import os
@@ -69,8 +69,8 @@ def dashboard(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get CSV storage data
-        storage_service = SimpleFileStorageService()
+        # Get MEGA CSV storage data
+        storage_service = MegaCSVStorageService()
         all_articles = storage_service.get_all_news_data()
         
         # Apply filters
@@ -140,8 +140,8 @@ def dashboard(request):
         storage_url = storage_info.get('storage_path', '')
         
     except Exception as e:
-        logger.error(f"Error accessing CSV storage data: {e}")
-        messages.error(request, "Error loading data from CSV storage. Please check your storage.")
+        logger.error(f"Error accessing MEGA CSV storage data: {e}")
+        messages.error(request, "Error loading data from MEGA CSV storage. Please check your storage.")
         all_articles = []
         total_articles = 0
         available_sources = []
@@ -183,8 +183,8 @@ def download_articles(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get CSV storage data with same filtering logic as dashboard
-        storage_service = SimpleFileStorageService()
+        # Get MEGA CSV storage data with same filtering logic as dashboard
+        storage_service = MegaCSVStorageService()
         all_articles = storage_service.get_all_news_data()
         
         if not all_articles:
@@ -261,7 +261,7 @@ def download_articles(request):
         return response
         
     except Exception as e:
-        logger.error(f"Error downloading articles from CSV storage: {e}")
+        logger.error(f"Error downloading articles from MEGA CSV storage: {e}")
         messages.error(request, "Error downloading data. Please try again.")
         return redirect('dashboard')
 

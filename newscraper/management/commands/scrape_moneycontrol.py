@@ -3,7 +3,7 @@ from django.utils import timezone
 import httpx
 import logging
 from bs4 import BeautifulSoup
-from newscraper.simple_file_storage_service import SimpleFileStorageService
+from newscraper.mega_csv_storage_service import MegaCSVStorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -25,9 +25,9 @@ class Command(BaseCommand):
         categories = ["business", "economy", "markets", "trends"]
         
         try:
-            # Initialize storage service
-            storage_service = SimpleFileStorageService()
-            self.stdout.write(f'Using storage directory: {storage_service.storage_dir}')
+            # Initialize MEGA CSV storage service
+            storage_service = MegaCSVStorageService()
+            self.stdout.write('Using MEGA cloud storage for CSV files')
             
             all_articles = []
             total_scraped = 0
@@ -42,10 +42,10 @@ class Command(BaseCommand):
             # Store all articles in CSV files
             if all_articles:
                 stored_count = storage_service.store_news_data(all_articles, 'MoneyControl')
-                self.stdout.write(f'Stored {stored_count} articles to CSV files')
+                self.stdout.write(f'Stored {stored_count} articles to MEGA CSV files')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl to CSV files')
+                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl to MEGA CSV files')
             )
             
         except Exception as e:
