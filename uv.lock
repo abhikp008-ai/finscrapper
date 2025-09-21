@@ -702,6 +702,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "python-dateutil" },
+    { name = "tenacity" },
     { name = "whitenoise" },
 ]
 
@@ -721,6 +722,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.2" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "python-dateutil", specifier = ">=2.9.0.post0" },
+    { name = "tenacity", specifier = ">=5.1.5" },
     { name = "whitenoise", specifier = ">=6.11.0" },
 ]
 
