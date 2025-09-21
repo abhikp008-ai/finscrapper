@@ -5,7 +5,7 @@ import logging
 import time
 import random
 from bs4 import BeautifulSoup
-from newscraper.mega_rclone_storage_service import MegaRcloneStorageService
+from newscraper.s3_storage_service import S3StorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -26,19 +26,19 @@ class Command(BaseCommand):
         max_pages = options['max_pages']
         
         try:
-            # Initialize MEGA rclone service for automatic upload
-            storage_service = MegaRcloneStorageService()
-            self.stdout.write('Using rclone for automatic MEGA cloud upload')
+            # Initialize S3 service for automatic upload
+            storage_service = S3StorageService()
+            self.stdout.write('Using AWS S3 for automatic cloud upload')
             
             articles = self.scrape_news(max_pages)
             
             # Store articles in MEGA
             if articles:
                 stored_count = storage_service.store_news_data(articles, 'LiveMint')
-                self.stdout.write(f'Uploaded {stored_count} articles to MEGA via rclone')
+                self.stdout.write(f'Uploaded {stored_count} articles to AWS S3')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {len(articles)} articles from LiveMint and uploaded to MEGA via rclone!')
+                self.style.SUCCESS(f'Successfully scraped {len(articles)} articles from LiveMint and uploaded to AWS S3!')
             )
             
         except Exception as e:

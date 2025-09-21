@@ -11,7 +11,7 @@ import csv
 import io
 from .models import UserProfile
 from typing import Any
-from .mega_rclone_storage_service import MegaRcloneStorageService
+from .s3_storage_service import S3StorageService
 from django.contrib.auth.models import User
 import logging
 import os
@@ -69,8 +69,8 @@ def dashboard(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get MEGA cloud storage data
-        storage_service = MegaRcloneStorageService()
+        # Get S3 cloud storage data
+        storage_service = S3StorageService()
         all_articles = storage_service.get_all_news_data()
         
         # Apply filters
@@ -183,8 +183,8 @@ def download_articles(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get MEGA cloud storage data with same filtering logic as dashboard
-        storage_service = MegaRcloneStorageService()
+        # Get S3 cloud storage data with same filtering logic as dashboard
+        storage_service = S3StorageService()
         all_articles = storage_service.get_all_news_data()
         
         if not all_articles:
