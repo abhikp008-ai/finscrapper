@@ -5,8 +5,7 @@ import logging
 import time
 import random
 from bs4 import BeautifulSoup
-from newscraper.google_sheets_service import GoogleSheetsService
-from newscraper.sheets_config import get_or_create_spreadsheet_id, save_spreadsheet_id, SPREADSHEET_NAME
+from newscraper.mega_rclone_storage_service import MegaRcloneStorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -27,26 +26,20 @@ class Command(BaseCommand):
         max_pages = options['max_pages']
         
         try:
-            # Initialize Google Sheets service
-            sheets_service = GoogleSheetsService()
-            
-            # Get or create spreadsheet
-            spreadsheet_id = get_or_create_spreadsheet_id()
-            if not spreadsheet_id:
-                spreadsheet_id = sheets_service.create_spreadsheet(SPREADSHEET_NAME)
-                save_spreadsheet_id(spreadsheet_id)
-                self.stdout.write(f'Created new spreadsheet: {sheets_service.get_sheet_url(spreadsheet_id)}')
+            # Initialize MEGA rclone service for automatic upload
+            storage_service = MegaRcloneStorageService()
+            self.stdout.write('Using rclone for automatic MEGA cloud upload')
             
             articles = self.scrape_news(max_pages)
             
-            # Store articles in Google Sheets
+            # Store articles in MEGA
             if articles:
-                sheets_service.store_news_data(spreadsheet_id, articles, 'LiveMint')
+                stored_count = storage_service.store_news_data(articles, 'LiveMint')
+                self.stdout.write(f'Uploaded {stored_count} articles to MEGA via rclone')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {len(articles)} articles from LiveMint to Google Sheets')
+                self.style.SUCCESS(f'Successfully scraped {len(articles)} articles from LiveMint and uploaded to MEGA via rclone!')
             )
-            self.stdout.write(f'View data at: {sheets_service.get_sheet_url(spreadsheet_id)}')
             
         except Exception as e:
             logger.error(f'Failed to scrape LiveMint: {e}')

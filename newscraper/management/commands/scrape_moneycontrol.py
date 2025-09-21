@@ -3,7 +3,7 @@ from django.utils import timezone
 import httpx
 import logging
 from bs4 import BeautifulSoup
-from newscraper.mega_manual_upload_service import MegaManualUploadService
+from newscraper.mega_rclone_storage_service import MegaRcloneStorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,9 @@ class Command(BaseCommand):
         categories = ["business", "economy", "markets", "trends"]
         
         try:
-            # Initialize MEGA upload-ready service
-            storage_service = MegaManualUploadService()
-            self.stdout.write('Creating CSV files ready for MEGA upload')
-            self.stdout.write(f'Upload directory: {storage_service.get_mega_upload_path()}')
+            # Initialize MEGA rclone service for automatic upload
+            storage_service = MegaRcloneStorageService()
+            self.stdout.write('Using rclone for automatic MEGA cloud upload')
             
             all_articles = []
             total_scraped = 0
@@ -43,10 +42,10 @@ class Command(BaseCommand):
             # Store all articles in CSV files
             if all_articles:
                 stored_count = storage_service.store_news_data(all_articles, 'MoneyControl')
-                self.stdout.write(f'Stored {stored_count} articles in CSV files ready for MEGA upload')
+                self.stdout.write(f'Uploaded {stored_count} articles to MEGA via rclone')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl. CSV files ready for MEGA upload!')
+                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from MoneyControl and uploaded to MEGA via rclone!')
             )
             
         except Exception as e:

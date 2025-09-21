@@ -3,8 +3,7 @@ from django.utils import timezone
 import httpx
 import logging
 from bs4 import BeautifulSoup
-from newscraper.google_sheets_service import GoogleSheetsService
-from newscraper.sheets_config import get_or_create_spreadsheet_id, save_spreadsheet_id, SPREADSHEET_NAME
+from newscraper.mega_rclone_storage_service import MegaRcloneStorageService
 import os
 
 logger = logging.getLogger(__name__)
@@ -29,15 +28,9 @@ class Command(BaseCommand):
         ]
         
         try:
-            # Initialize Google Sheets service
-            sheets_service = GoogleSheetsService()
-            
-            # Get or create spreadsheet
-            spreadsheet_id = get_or_create_spreadsheet_id()
-            if not spreadsheet_id:
-                spreadsheet_id = sheets_service.create_spreadsheet(SPREADSHEET_NAME)
-                save_spreadsheet_id(spreadsheet_id)
-                self.stdout.write(f'Created new spreadsheet: {sheets_service.get_sheet_url(spreadsheet_id)}')
+            # Initialize MEGA rclone service for automatic upload
+            storage_service = MegaRcloneStorageService()
+            self.stdout.write('Using rclone for automatic MEGA cloud upload')
             
             all_articles = []
             total_scraped = 0
@@ -49,14 +42,14 @@ class Command(BaseCommand):
                 total_scraped += len(articles)
                 self.stdout.write(f'Scraped {len(articles)} articles from {category}')
             
-            # Store all articles in Google Sheets
+            # Store all articles in MEGA
             if all_articles:
-                sheets_service.store_news_data(spreadsheet_id, all_articles, 'FinancialExpress')
+                stored_count = storage_service.store_news_data(all_articles, 'FinancialExpress')
+                self.stdout.write(f'Uploaded {stored_count} articles to MEGA via rclone')
             
             self.stdout.write(
-                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from Financial Express to Google Sheets')
+                self.style.SUCCESS(f'Successfully scraped {total_scraped} articles from Financial Express and uploaded to MEGA via rclone!')
             )
-            self.stdout.write(f'View data at: {sheets_service.get_sheet_url(spreadsheet_id)}')
             
         except Exception as e:
             logger.error(f'Failed to scrape Financial Express: {e}')

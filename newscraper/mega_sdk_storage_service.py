@@ -82,6 +82,8 @@ class MegaSDKStorageService:
                 logger.info("Session file found but mega.py doesn't support direct session restore")
                 return False
             
+            return False
+            
         except Exception as e:
             logger.warning(f"Could not restore session: {e}")
             return False
@@ -259,6 +261,8 @@ class MegaSDKStorageService:
                     self.account.delete(file_id)
                     logger.info(f"Deleted existing {filename} from MEGA")
                     return
+                    
+            logger.debug(f"No existing {filename} found to delete")
                     
         except Exception as e:
             logger.warning(f"Could not delete existing {filename}: {e}")
