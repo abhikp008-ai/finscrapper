@@ -1,0 +1,32 @@
+
+=== MEGA UPLOAD INSTRUCTIONS ===
+
+Your CSV files are ready for upload to MEGA cloud storage!
+
+FILES TO UPLOAD:
+/home/runner/workspace/mega_upload_ready/
+
+STEPS TO UPLOAD TO MEGA:
+1. Go to https://mega.nz and log in to your account
+2. Click "Upload" or drag and drop the CSV files
+3. Upload all .csv files from the folder: /home/runner/workspace/mega_upload_ready
+4. Your news data will then be available in your MEGA cloud storage
+
+CSV FILES CREATED:
+- moneycontrol_news_data.csv (main data file)
+- Individual timestamped files for version history
+
+WHAT'S IN THE CSV FILES:
+- Title: News article headline
+- URL: Link to original article
+- Date: Publication date
+- Content: Full article content
+- Source: News source (MoneyControl, LiveMint, etc.)
+- Scraped_At: When the data was collected
+
+AUTOMATIC FEATURES:
+- Duplicate articles are automatically removed
+- New data is merged with existing data
+- Files are ready for immediate MEGA upload
+
+Generated: 2025-09-21 09:50:07

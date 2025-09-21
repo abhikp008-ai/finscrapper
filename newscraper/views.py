@@ -11,7 +11,7 @@ import csv
 import io
 from .models import UserProfile
 from typing import Any
-from .mega_csv_storage_service import MegaCSVStorageService
+from .mega_manual_upload_service import MegaManualUploadService
 from django.contrib.auth.models import User
 import logging
 import os
@@ -69,8 +69,8 @@ def dashboard(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get MEGA CSV storage data
-        storage_service = MegaCSVStorageService()
+        # Get MEGA upload-ready data
+        storage_service = MegaManualUploadService()
         all_articles = storage_service.get_all_news_data()
         
         # Apply filters
@@ -183,8 +183,8 @@ def download_articles(request):
     search = request.GET.get('search', '')
     
     try:
-        # Get MEGA CSV storage data with same filtering logic as dashboard
-        storage_service = MegaCSVStorageService()
+        # Get MEGA upload-ready data with same filtering logic as dashboard
+        storage_service = MegaManualUploadService()
         all_articles = storage_service.get_all_news_data()
         
         if not all_articles:
