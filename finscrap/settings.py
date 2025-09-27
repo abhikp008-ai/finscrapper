@@ -161,3 +161,9 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    
+CSRF_TRUSTED_ORIGINS = [
+    "https://finscrapper-production.up.railway.app",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
