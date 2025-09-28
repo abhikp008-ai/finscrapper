@@ -342,3 +342,107 @@ class S3StorageService:
         except Exception as e:
             logger.error(f"S3 connection test failed: {e}")
             return False
+    
+    def store_generic_csv(self, df: pd.DataFrame, key_path: str) -> bool:
+        """Store generic DataFrame as CSV to any S3 path"""
+        try:
+            self._upload_csv_to_s3(df, key_path)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store CSV to {key_path}: {e}")
+            return False
+    
+    def get_generic_csv(self, key_path: str) -> Optional[pd.DataFrame]:
+        """Get generic CSV from any S3 path as DataFrame"""
+        try:
+            return self._download_csv_from_s3(key_path)
+        except Exception as e:
+            logger.error(f"Failed to get CSV from {key_path}: {e}")
+            return None
+    
+    def store_nse_stock_list(self, stocks_data: List[Dict[str, Any]]) -> int:
+        """Store NSE stock list data"""
+        try:
+            if not stocks_data:
+                return 0
+            
+            df = pd.DataFrame(stocks_data)
+            
+            # Store in latest and history locations
+            latest_key = f"{self.prefix}/{self.env}/nse_stocks/latest/nse_equity_list.csv"
+            history_key = f"{self.prefix}/{self.env}/nse_stocks/history/nse_equity_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            self._upload_csv_to_s3(df, latest_key)
+            self._upload_csv_to_s3(df, history_key)
+            
+            logger.info(f"Successfully stored {len(df)} NSE stocks in S3")
+            return len(df)
+            
+        except Exception as e:
+            logger.error(f"Failed to store NSE stock list: {e}")
+            raise
+    
+    def store_nse_detailed_data(self, detailed_data: List[Dict[str, Any]]) -> int:
+        """Store NSE detailed stock data with merging"""
+        try:
+            if not detailed_data:
+                return 0
+            
+            df = pd.DataFrame(detailed_data)
+            
+            # Get existing data and merge
+            latest_key = f"{self.prefix}/{self.env}/nse_stocks/latest/nse_detailed_data.csv"
+            existing_df = self._download_csv_from_s3(latest_key)
+            
+            if existing_df is not None and not existing_df.empty:
+                combined_df = pd.concat([existing_df, df], ignore_index=True)
+                combined_df = combined_df.drop_duplicates(subset=['symbol'], keep='last')
+            else:
+                combined_df = df
+            
+            # Store merged data and current batch
+            history_key = f"{self.prefix}/{self.env}/nse_stocks/history/nse_detailed_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            self._upload_csv_to_s3(combined_df, latest_key)
+            self._upload_csv_to_s3(df, history_key)
+            
+            logger.info(f"Successfully stored detailed data for {len(df)} NSE stocks in S3")
+            return len(df)
+            
+        except Exception as e:
+            logger.error(f"Failed to store NSE detailed data: {e}")
+            raise
+    
+    def store_nse_historical_data(self, symbol: str, historical_df: pd.DataFrame) -> bool:
+        """Store historical OHLCV data for a specific stock symbol"""
+        try:
+            if historical_df.empty:
+                return False
+            
+            # Store historical data with symbol and date partitioning
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            history_key = f"{self.prefix}/{self.env}/nse_stocks/ohlcv/{symbol.upper()}/historical_data_{timestamp}.csv"
+            
+            # Add symbol column to the data
+            historical_df = historical_df.copy()
+            historical_df['symbol'] = symbol.upper()
+            historical_df['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            self._upload_csv_to_s3(historical_df, history_key)
+            
+            logger.info(f"Stored {len(historical_df)} historical records for {symbol}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to store historical data for {symbol}: {e}")
+            return False
+    
+    def get_nse_stock_list(self) -> Optional[pd.DataFrame]:
+        """Get the latest NSE stock list"""
+        latest_key = f"{self.prefix}/{self.env}/nse_stocks/latest/nse_equity_list.csv"
+        return self._download_csv_from_s3(latest_key)
+    
+    def get_nse_detailed_data(self) -> Optional[pd.DataFrame]:
+        """Get the latest NSE detailed data"""
+        latest_key = f"{self.prefix}/{self.env}/nse_stocks/latest/nse_detailed_data.csv"
+        return self._download_csv_from_s3(latest_key)
