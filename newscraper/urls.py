@@ -11,4 +11,8 @@ urlpatterns = [
     path('edit-user/<int:user_id>/', views.edit_user_permissions, name='edit_user_permissions'),
     path('run-scraper/', views.run_scraper, name='run_scraper'),
     path('privacy-policy/', views.privacy_policy, name='privacy_policy'),
+    # NSE Stocks URLs
+    path('nse-stocks/', views.nse_stocks, name='nse_stocks'),
+    path('nse-stocks/<str:symbol>/', views.nse_stock_detail, name='nse_stock_detail'),
+    path('download-nse/', views.download_nse_stocks, name='download_nse_stocks'),
 ]
