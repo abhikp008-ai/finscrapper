@@ -664,3 +664,128 @@ def download_nse_stocks(request):
         logger.error(f"Error downloading NSE stocks data: {e}")
         messages.error(request, "Error downloading NSE data. Please try again.")
         return redirect('nse_stocks')
+
+
+@login_required
+def youtube_scraper(request):
+    """Display YouTube scraper interface and job history"""
+    from .models import YouTubeScrapingJob
+    
+    jobs = YouTubeScrapingJob.objects.filter(created_by=request.user).order_by('-created_at')[:20]
+    
+    context = {
+        'jobs': jobs,
+        'page_title': 'YouTube Video & Transcript Scraper'
+    }
+    
+    return render(request, 'newscraper/youtube_scraper.html', context)
+
+
+@login_required
+def start_youtube_scraping(request):
+    """Start YouTube scraping background job"""
+    from .models import YouTubeScrapingJob
+    import subprocess
+    import sys
+    
+    if request.method == 'POST':
+        keyword = request.POST.get('keyword', '').strip()
+        
+        if not keyword:
+            messages.error(request, 'Please enter a keyword to search.')
+            return redirect('youtube_scraper')
+        
+        job = YouTubeScrapingJob.objects.create(
+            keyword=keyword,
+            created_by=request.user,
+            status='pending'
+        )
+        
+        try:
+            python_path = sys.executable
+            manage_py_path = os.path.join(os.getcwd(), 'manage.py')
+            
+            subprocess.Popen(
+                [python_path, manage_py_path, 'scrape_youtube', '--job-id', str(job.id)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+            
+            messages.success(
+                request, 
+                f'YouTube scraping started for "{keyword}". The process is running in the background. '
+                f'Check the status below - it will update automatically.'
+            )
+            
+        except Exception as e:
+            logger.error(f'Error starting YouTube scraping job: {e}')
+            job.status = 'failed'
+            job.error_message = str(e)
+            job.save()
+            messages.error(request, f'Error starting scraping job: {str(e)}')
+        
+        return redirect('youtube_scraper')
+    
+    return redirect('youtube_scraper')
+
+
+@login_required
+def youtube_job_status(request, job_id):
+    """Get YouTube scraping job status as JSON"""
+    from .models import YouTubeScrapingJob
+    
+    try:
+        job = get_object_or_404(YouTubeScrapingJob, id=job_id, created_by=request.user)
+        
+        data = {
+            'id': job.id,
+            'keyword': job.keyword,
+            'status': job.status,
+            'status_display': job.get_status_display(),
+            'videos_found': job.videos_found,
+            'transcripts_fetched': job.transcripts_fetched,
+            'videos_csv_path': job.videos_csv_path,
+            'transcripts_csv_path': job.transcripts_csv_path,
+            'error_message': job.error_message,
+            'created_at': job.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'completed_at': job.completed_at.strftime('%Y-%m-%d %H:%M:%S') if job.completed_at else None
+        }
+        
+        return JsonResponse(data)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=404)
+
+
+@login_required
+def download_youtube_csv(request, job_id, file_type):
+    """Download YouTube scraping CSV files"""
+    from .models import YouTubeScrapingJob
+    
+    try:
+        job = get_object_or_404(YouTubeScrapingJob, id=job_id, created_by=request.user)
+        
+        if file_type == 'videos':
+            filepath = job.videos_csv_path
+            filename = os.path.basename(filepath) if filepath else 'youtube_videos_list.csv'
+        elif file_type == 'transcripts':
+            filepath = job.transcripts_csv_path
+            filename = os.path.basename(filepath) if filepath else 'youtube_transcripts.csv'
+        else:
+            messages.error(request, 'Invalid file type')
+            return redirect('youtube_scraper')
+        
+        if not filepath or not os.path.exists(filepath):
+            messages.error(request, 'CSV file not found')
+            return redirect('youtube_scraper')
+        
+        with open(filepath, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+    except Exception as e:
+        logger.error(f'Error downloading YouTube CSV: {e}')
+        messages.error(request, 'Error downloading file')
+        return redirect('youtube_scraper')

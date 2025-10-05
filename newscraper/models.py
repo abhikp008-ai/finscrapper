@@ -61,6 +61,34 @@ class ScrapingJob(models.Model):
     def __str__(self):
         return f"{self.source} - {self.status} ({self.articles_scraped} articles)"
 
+class YouTubeScrapingJob(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('searching', 'Searching Videos'),
+        ('fetching_transcripts', 'Fetching Transcripts'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    
+    keyword = models.CharField(max_length=255)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    videos_found = models.IntegerField(default=0)
+    transcripts_fetched = models.IntegerField(default=0)
+    videos_csv_path = models.CharField(max_length=500, blank=True)
+    transcripts_csv_path = models.CharField(max_length=500, blank=True)
+    error_message = models.TextField(blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return f"{self.keyword} - {self.status} ({self.videos_found} videos, {self.transcripts_fetched} transcripts)"
+
+
 
 @receiver(post_save, sender=User)
 def ensure_user_profile(sender, instance, **kwargs):

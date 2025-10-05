@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Article, UserProfile, ScrapingJob
+from .models import Article, UserProfile, ScrapingJob, YouTubeScrapingJob
 
 
 @admin.register(Article)
@@ -18,6 +18,13 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'can_monitor', 'can_download', 'created_at')
     list_filter = ('can_monitor', 'can_download', 'created_at')
     search_fields = ('user__username', 'user__email')
+
+@admin.register(YouTubeScrapingJob)
+class YouTubeScrapingJobAdmin(admin.ModelAdmin):
+    list_display = ('keyword', 'status', 'videos_found', 'transcripts_fetched', 'created_at', 'created_by')
+    list_filter = ('status', 'created_at')
+    readonly_fields = ('started_at', 'completed_at', 'created_at')
+    search_fields = ('keyword',)
 
 
 @admin.register(ScrapingJob)
