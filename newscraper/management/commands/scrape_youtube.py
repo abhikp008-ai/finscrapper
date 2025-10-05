@@ -1,6 +1,7 @@
 import os
 import csv
 import logging
+import pandas as pd
 from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -8,6 +9,7 @@ from yt_dlp import YoutubeDL
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from newscraper.models import YouTubeScrapingJob
+from newscraper.s3_storage_service import S3StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'Starting YouTube scraping for keyword: "{job.keyword}"'))
         
         try:
+            s3_service = S3StorageService()
+            
             job.status = 'searching'
             job.started_at = timezone.now()
             job.save()
@@ -42,29 +46,33 @@ class Command(BaseCommand):
             videos_data = self.search_youtube_videos(job.keyword)
             
             if not videos_data:
-                raise Exception('No videos found for the given keyword')
+                raise Exception(
+                    'No videos found. YouTube may be blocking datacenter IPs. '
+                    'This feature works best on local deployment or residential IP addresses. '
+                    'For Replit, consider using Google YouTube Data API v3 instead of yt-dlp.'
+                )
             
-            videos_csv_path = self.save_videos_to_csv(job, videos_data)
-            job.videos_csv_path = videos_csv_path
+            videos_s3_key = self.upload_videos_to_s3(s3_service, job, videos_data)
+            job.videos_csv_path = videos_s3_key
             job.videos_found = len(videos_data)
             job.save()
             
-            self.stdout.write(self.style.SUCCESS(f'Found {len(videos_data)} videos, saved to {videos_csv_path}'))
+            self.stdout.write(self.style.SUCCESS(f'Found {len(videos_data)} videos, uploaded to S3: {videos_s3_key}'))
             
             job.status = 'fetching_transcripts'
             job.save()
             
             transcripts_data = self.fetch_transcripts(videos_data)
             
-            transcripts_csv_path = self.save_transcripts_to_csv(job, transcripts_data)
-            job.transcripts_csv_path = transcripts_csv_path
+            transcripts_s3_key = self.upload_transcripts_to_s3(s3_service, job, transcripts_data)
+            job.transcripts_csv_path = transcripts_s3_key
             job.transcripts_fetched = len(transcripts_data)
             job.status = 'completed'
             job.completed_at = timezone.now()
             job.save()
             
             self.stdout.write(self.style.SUCCESS(
-                f'Completed! Fetched {len(transcripts_data)} transcripts, saved to {transcripts_csv_path}'
+                f'Completed! Fetched {len(transcripts_data)} transcripts, uploaded to S3: {transcripts_s3_key}'
             ))
             
         except Exception as e:
@@ -81,13 +89,23 @@ class Command(BaseCommand):
         
         try:
             ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
+                'quiet': False,
+                'no_warnings': False,
                 'noplaylist': True,
-                'extract_flat': False
+                'extract_flat': 'in_playlist',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'android', 'web'],
+                        'skip': ['dash', 'hls']
+                    }
+                },
+                'http_headers': {
+                    'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+                }
             }
             
             with YoutubeDL(ydl_opts) as ydl:
+                self.stdout.write(f'Extracting video information...')
                 result = ydl.extract_info(
                     f"ytsearch{max_results}:{keyword}",
                     download=False
@@ -95,16 +113,20 @@ class Command(BaseCommand):
                 
                 videos_data = []
                 if result and 'entries' in result:
-                    for video in result['entries']:
+                    self.stdout.write(f'Found {len(result["entries"])} entries')
+                    for idx, video in enumerate(result['entries'], 1):
                         if video:
+                            self.stdout.write(f'Processing video {idx}: {video.get("title", "Unknown")[:50]}...')
                             videos_data.append({
                                 'title': video.get('title', 'N/A'),
-                                'url': f"https://www.youtube.com/watch?v={video.get('id', '')}",
+                                'url': video.get('webpage_url') or video.get('url') or f"https://www.youtube.com/watch?v={video.get('id', '')}",
                                 'video_id': video.get('id', 'N/A'),
                                 'duration': self._format_duration(video.get('duration', 0)),
-                                'channel': video.get('uploader', 'N/A'),
+                                'channel': video.get('uploader', video.get('channel', 'N/A')),
                                 'views': self._format_views(video.get('view_count', 0))
                             })
+                else:
+                    self.stdout.write('No entries found in result')
                 
                 return videos_data
                 
@@ -133,23 +155,21 @@ class Command(BaseCommand):
             return f"{view_count / 1000:.1f}K views"
         return f"{view_count} views"
 
-    def save_videos_to_csv(self, job, videos_data):
-        """Save video list to CSV file"""
+    def upload_videos_to_s3(self, s3_service, job, videos_data):
+        """Upload video list to S3 as CSV"""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'youtube_videos_list_{job.id}_{timestamp}.csv'
-        filepath = os.path.join('media', 'youtube_scrapes', filename)
         
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        df = pd.DataFrame(videos_data)
+        df['scraped_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        df['keyword'] = job.keyword
+        df['job_id'] = job.id
         
-        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['title', 'url', 'video_id', 'duration', 'channel', 'views']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
-            writer.writeheader()
-            for video in videos_data:
-                writer.writerow(video)
+        s3_key = f"{s3_service.prefix}/{s3_service.env}/youtube/videos/youtube_videos_{job.id}_{timestamp}.csv"
         
-        return filepath
+        s3_service._upload_csv_to_s3(df, s3_key)
+        self.stdout.write(self.style.SUCCESS(f'Uploaded videos CSV to S3: {s3_key}'))
+        
+        return s3_key
 
     def fetch_transcripts(self, videos_data):
         """Fetch transcripts for each video"""
@@ -183,20 +203,18 @@ class Command(BaseCommand):
         
         return transcripts_data
 
-    def save_transcripts_to_csv(self, job, transcripts_data):
-        """Save transcripts to CSV file"""
+    def upload_transcripts_to_s3(self, s3_service, job, transcripts_data):
+        """Upload transcripts to S3 as CSV"""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'youtube_video_transcripts_{job.id}_{timestamp}.csv'
-        filepath = os.path.join('media', 'youtube_scrapes', filename)
         
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        df = pd.DataFrame(transcripts_data)
+        df['scraped_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        df['keyword'] = job.keyword
+        df['job_id'] = job.id
         
-        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['video_title', 'video_url', 'video_id', 'transcript_text', 'transcript_length']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
-            writer.writeheader()
-            for transcript in transcripts_data:
-                writer.writerow(transcript)
+        s3_key = f"{s3_service.prefix}/{s3_service.env}/youtube/transcripts/youtube_transcripts_{job.id}_{timestamp}.csv"
         
-        return filepath
+        s3_service._upload_csv_to_s3(df, s3_key)
+        self.stdout.write(self.style.SUCCESS(f'Uploaded transcripts CSV to S3: {s3_key}'))
+        
+        return s3_key

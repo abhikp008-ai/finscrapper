@@ -760,30 +760,44 @@ def youtube_job_status(request, job_id):
 
 @login_required
 def download_youtube_csv(request, job_id, file_type):
-    """Download YouTube scraping CSV files"""
+    """Download YouTube scraping CSV files from S3"""
     from .models import YouTubeScrapingJob
     
     try:
         job = get_object_or_404(YouTubeScrapingJob, id=job_id, created_by=request.user)
         
         if file_type == 'videos':
-            filepath = job.videos_csv_path
-            filename = os.path.basename(filepath) if filepath else 'youtube_videos_list.csv'
+            s3_key = job.videos_csv_path
+            filename = f'youtube_videos_{job.id}.csv'
         elif file_type == 'transcripts':
-            filepath = job.transcripts_csv_path
-            filename = os.path.basename(filepath) if filepath else 'youtube_transcripts.csv'
+            s3_key = job.transcripts_csv_path
+            filename = f'youtube_transcripts_{job.id}.csv'
         else:
             messages.error(request, 'Invalid file type')
             return redirect('youtube_scraper')
         
-        if not filepath or not os.path.exists(filepath):
+        if not s3_key:
             messages.error(request, 'CSV file not found')
             return redirect('youtube_scraper')
         
-        with open(filepath, 'rb') as f:
-            response = HttpResponse(f.read(), content_type='text/csv')
+        try:
+            storage_service = S3StorageService()
+            df = storage_service._download_csv_from_s3(s3_key)
+            
+            if df is None or df.empty:
+                messages.error(request, 'CSV file is empty or not found')
+                return redirect('youtube_scraper')
+            
+            csv_content = df.to_csv(index=False)
+            
+            response = HttpResponse(csv_content, content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
+            
+        except Exception as e:
+            logger.error(f'Error downloading from S3: {e}')
+            messages.error(request, f'Error downloading file from cloud storage: {str(e)}')
+            return redirect('youtube_scraper')
             
     except Exception as e:
         logger.error(f'Error downloading YouTube CSV: {e}')
